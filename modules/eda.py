@@ -19,7 +19,7 @@ from modules.utils import (
 
 def analyze_missing_values(df):
     """Analyze and visualize missing values."""
-    st.subheader("🔍 Missing Value Analysis")
+    st.subheader("Missing Value Analysis")
     
     missing_data = []
     for col in df.columns:
@@ -54,7 +54,7 @@ def analyze_missing_values(df):
         st.dataframe(cols_missing, use_container_width=True, hide_index=True)
         
         # Heatmap visualization
-        with st.expander("📊 Missing Values Heatmap", expanded=False):
+        with st.expander("Missing Values Heatmap", expanded=False):
             if len(cols_missing) > 0 and len(cols_missing) <= 30:
                 fig, ax = plt.subplots(figsize=(12, 6))
                 missing_matrix = df[cols_missing['Column'].tolist()].isnull()
@@ -64,7 +64,7 @@ def analyze_missing_values(df):
                 st.pyplot(fig)
                 close_figure(fig)
     else:
-        st.success("✅ No missing values found in the dataset!")
+        st.success("No missing values found in the dataset!")
     
     return missing_df
 
@@ -109,7 +109,7 @@ def detect_outliers_zscore(series, threshold=3):
 
 def analyze_outliers(df, column_types):
     """Analyze and visualize outliers in numerical columns."""
-    st.subheader("📊 Outlier Detection")
+    st.subheader("Outlier Detection")
     
     if not column_types['numerical']:
         st.info("No numerical columns available for outlier detection.")
@@ -154,7 +154,7 @@ def analyze_outliers(df, column_types):
         st.dataframe(outlier_df, use_container_width=True, hide_index=True)
         
         # Box plots for top columns with outliers
-        with st.expander("📊 Box Plots", expanded=False):
+        with st.expander("Box Plots", expanded=False):
             cols_to_plot = outlier_df[outlier_df['Total (IQR)'] > 0]['Column'].head(6).tolist()
             
             if cols_to_plot:
@@ -189,7 +189,7 @@ def analyze_outliers(df, column_types):
 
 def analyze_correlations(df, column_types, target_col=None):
     """Analyze and visualize correlations."""
-    st.subheader("🔗 Correlation Analysis")
+    st.subheader("Correlation Analysis")
     
     numerical_cols = column_types['numerical']
     
@@ -216,8 +216,10 @@ def analyze_correlations(df, column_types, target_col=None):
             color_continuous_scale='RdBu_r',
             aspect='auto',
             zmin=-1,
-            zmax=1
+            zmax=1,
+            text_auto='.2f'
         )
+        fig.update_traces(textfont_size=10)
         fig.update_layout(title='Correlation Matrix', height=600)
         st.plotly_chart(fig, use_container_width=True)
     
@@ -237,10 +239,10 @@ def analyze_correlations(df, column_types, target_col=None):
         if high_corr_pairs:
             high_corr_df = pd.DataFrame(high_corr_pairs)
             high_corr_df = high_corr_df.sort_values('Correlation', key=abs, ascending=False)
-            st.warning(f"⚠️ Found {len(high_corr_pairs)} highly correlated pairs (|r| > 0.8)")
+            st.warning(f"Found {len(high_corr_pairs)} highly correlated pairs (|r| > 0.8)")
             st.dataframe(high_corr_df, use_container_width=True, hide_index=True)
         else:
-            st.success("✅ No highly correlated feature pairs found (|r| > 0.8)")
+            st.success("No highly correlated feature pairs found (|r| > 0.8)")
     
     with tab3:
         if target_col and target_col in numerical_cols:
@@ -272,7 +274,7 @@ def analyze_correlations(df, column_types, target_col=None):
 
 def analyze_distributions(df, column_types):
     """Analyze and visualize feature distributions."""
-    st.subheader("📈 Distribution Analysis")
+    st.subheader("Distribution Analysis")
     
     tab1, tab2 = st.tabs(["Numerical Distributions", "Categorical Distributions"])
     
@@ -286,7 +288,7 @@ def analyze_distributions(df, column_types):
             
             if selected_num_cols:
                 for col in selected_num_cols:
-                    with st.expander(f"📊 {col}", expanded=False):
+                    with st.expander(f"{col}", expanded=False):
                         col1, col2 = st.columns(2)
                         
                         with col1:
@@ -318,11 +320,11 @@ def analyze_distributions(df, column_types):
                             # Normality indicator
                             if skew is not None:
                                 if abs(skew) < 0.5:
-                                    st.success("✅ Approximately symmetric")
+                                    st.success("Approximately symmetric")
                                 elif skew > 0.5:
-                                    st.warning("⚠️ Right-skewed (positive skew)")
+                                    st.warning("Right-skewed (positive skew)")
                                 else:
-                                    st.warning("⚠️ Left-skewed (negative skew)")
+                                    st.warning("Left-skewed (negative skew)")
         else:
             st.info("No numerical columns available.")
     
@@ -336,7 +338,7 @@ def analyze_distributions(df, column_types):
             
             if selected_cat_cols:
                 for col in selected_cat_cols:
-                    with st.expander(f"📊 {col}", expanded=False):
+                    with st.expander(f"{col}", expanded=False):
                         value_counts = df[col].value_counts().head(20)
                         
                         fig = px.bar(
@@ -355,7 +357,7 @@ def analyze_distributions(df, column_types):
 
 def analyze_multivariate(df, column_types, target_col=None):
     """Multivariate analysis including pairplots."""
-    st.subheader("🔬 Multivariate Analysis")
+    st.subheader("Multivariate Analysis")
     
     if not target_col:
         st.info("Select a target variable to enable multivariate analysis.")
@@ -412,10 +414,10 @@ def analyze_multivariate(df, column_types, target_col=None):
 
 def render_eda_page():
     """Render the complete EDA page with improved UI."""
-    st.header("📊 Exploratory Data Analysis")
+    st.header("Exploratory Data Analysis")
     
     if 'data' not in st.session_state or st.session_state['data'] is None:
-        st.warning("⚠️ Please upload a dataset first!")
+        st.warning("Please upload a dataset first!")
         return
     
     df = st.session_state['data']
@@ -485,7 +487,7 @@ def render_eda_page():
     analyze_multivariate(df, column_types, target_col)
     
     progress_bar.progress(100)
-    status_text.text("✅ EDA Complete!")
+    status_text.text("EDA Complete!")
     
     st.session_state['eda_complete'] = True
     
@@ -494,7 +496,7 @@ def render_eda_page():
     <div style="background: linear-gradient(145deg, rgba(56, 239, 125, 0.1), rgba(17, 153, 142, 0.1));
                 border: 1px solid rgba(56, 239, 125, 0.3); border-radius: 12px; padding: 20px; margin-top: 24px;">
         <div style="display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 1.5rem;">✅</span>
+            <span style="font-size: 1.5rem;"></span>
             <div>
                 <div style="font-weight: 600; color: #38ef7d;">Exploratory Data Analysis Complete!</div>
                 <div style="color: rgba(255,255,255,0.7); font-size: 0.9rem; margin-top: 4px;">
@@ -504,4 +506,11 @@ def render_eda_page():
         </div>
     </div>
     """, unsafe_allow_html=True)
-
+    
+    # Continue button
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("Continue to Issue Detection", type="primary", use_container_width=True):
+            st.session_state['current_page'] = 'issues'
+            st.rerun()

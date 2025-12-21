@@ -409,7 +409,20 @@ def generate_pdf_report(session_state):
                  "by domain experts. Model performance may vary on out-of-sample data.")
     
     # Generate PDF bytes
-    pdf_output = pdf.output(dest='S').encode('latin-1')
+    try:
+        # Try FPDF2 style first
+        pdf_output = pdf.output()
+        if isinstance(pdf_output, str):
+            pdf_output = pdf_output.encode('latin-1')
+        elif isinstance(pdf_output, bytearray):
+            pdf_output = bytes(pdf_output)
+    except:
+        # Fallback to older FPDF style
+        pdf_output = pdf.output(dest='S')
+        if isinstance(pdf_output, str):
+            pdf_output = pdf_output.encode('latin-1')
+        elif isinstance(pdf_output, bytearray):
+            pdf_output = bytes(pdf_output)
     
     return pdf_output
 
@@ -502,6 +515,22 @@ def generate_html_report(session_state):
         .best-model h3 {{
             color: white;
             margin-top: 0;
+            font-size: 1.5rem;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }}
+        .best-model .metric {{
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }}
+        .best-model .metric-value {{
+            color: white !important;
+            font-size: 28px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }}
+        .best-model .metric-label {{
+            color: rgba(255, 255, 255, 0.95) !important;
+            font-size: 14px;
+            font-weight: 500;
         }}
         .footer {{
             text-align: center;
@@ -513,11 +542,11 @@ def generate_html_report(session_state):
 </head>
 <body>
     <div class="container">
-        <h1>🤖 AutoML Classification Report</h1>
+        <h1>AutoML Classification Report</h1>
         <p><strong>Dataset:</strong> {file_name}</p>
         <p><strong>Generated:</strong> {datetime.now().strftime("%B %d, %Y at %H:%M")}</p>
         
-        <h2>📊 Model Comparison</h2>
+        <h2>Model Comparison</h2>
         <table>
             <tr>
                 <th>Model</th>
@@ -537,6 +566,7 @@ def generate_html_report(session_state):
     
     for name, result in sorted_results:
         if result['success']:
+            roc_auc_value = f"{result['roc_auc']:.4f}" if result['roc_auc'] else 'N/A'
             html += f"""
             <tr>
                 <td><strong>{name}</strong></td>
@@ -544,7 +574,7 @@ def generate_html_report(session_state):
                 <td>{result['precision']:.4f}</td>
                 <td>{result['recall']:.4f}</td>
                 <td>{result['f1_score']:.4f}</td>
-                <td>{result['roc_auc']:.4f if result['roc_auc'] else 'N/A'}</td>
+                <td>{roc_auc_value}</td>
                 <td>{result['training_time']:.2f}</td>
             </tr>
             """
@@ -554,9 +584,10 @@ def generate_html_report(session_state):
     # Best model section
     if best_model_name in results and results[best_model_name]['success']:
         best = results[best_model_name]
+        best_roc_auc = f"{best['roc_auc']:.4f}" if best['roc_auc'] else 'N/A'
         html += f"""
         <div class="best-model">
-            <h3>🏆 Best Model: {best_model_name}</h3>
+            <h3>Best Model: {best_model_name}</h3>
             <div class="metric">
                 <div class="metric-value" style="color: white;">{best['accuracy']:.4f}</div>
                 <div class="metric-label" style="color: #ddd;">Accuracy</div>
@@ -566,7 +597,7 @@ def generate_html_report(session_state):
                 <div class="metric-label" style="color: #ddd;">F1-Score</div>
             </div>
             <div class="metric">
-                <div class="metric-value" style="color: white;">{best['roc_auc']:.4f if best['roc_auc'] else 'N/A'}</div>
+                <div class="metric-value" style="color: white;">{best_roc_auc}</div>
                 <div class="metric-label" style="color: #ddd;">ROC-AUC</div>
             </div>
         </div>
@@ -610,10 +641,11 @@ def generate_markdown_report(session_state):
     
     if best_model_name in results and results[best_model_name]['success']:
         best = results[best_model_name]
+        best_roc_auc = f"{best['roc_auc']:.4f}" if best['roc_auc'] else 'N/A'
         md += f"""The best performing model is **{best_model_name}** with:
 - Accuracy: {best['accuracy']:.4f}
 - F1-Score: {best['f1_score']:.4f}
-- ROC-AUC: {best['roc_auc']:.4f if best['roc_auc'] else 'N/A'}
+- ROC-AUC: {best_roc_auc}
 
 """
     
@@ -627,7 +659,8 @@ def generate_markdown_report(session_state):
                                key=lambda x: x[1]['f1_score'] if x[1]['success'] else 0,
                                reverse=True):
         if result['success']:
-            md += f"| {name} | {result['accuracy']:.4f} | {result['precision']:.4f} | {result['recall']:.4f} | {result['f1_score']:.4f} | {result['roc_auc']:.4f if result['roc_auc'] else 'N/A'} | {result['training_time']:.2f} |\n"
+            roc_auc_value = f"{result['roc_auc']:.4f}" if result['roc_auc'] else 'N/A'
+            md += f"| {name} | {result['accuracy']:.4f} | {result['precision']:.4f} | {result['recall']:.4f} | {result['f1_score']:.4f} | {roc_auc_value} | {result['training_time']:.2f} |\n"
     
     md += """
 ---
@@ -648,10 +681,10 @@ def generate_markdown_report(session_state):
 
 def render_report_generation_page():
     """Render the report generation page."""
-    st.header("📄 Generate Report")
+    st.header("Generate Report")
     
     if not st.session_state.get('models_trained', False):
-        st.warning("⚠️ Please train models first before generating a report!")
+        st.warning("Please train models first before generating a report!")
         return
     
     st.markdown("""
@@ -669,7 +702,7 @@ def render_report_generation_page():
     st.markdown("---")
     
     # Report options
-    st.subheader("📝 Report Options")
+    st.subheader("Report Options")
     
     col1, col2 = st.columns(2)
     
@@ -684,51 +717,51 @@ def render_report_generation_page():
     st.markdown("---")
     
     # Generate buttons
-    st.subheader("📥 Download Reports")
+    st.subheader("Download Reports")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("📄 Generate PDF Report", type="primary", use_container_width=True):
+        if st.button("Generate PDF Report", type="primary", use_container_width=True):
             with st.spinner("Generating PDF report..."):
                 try:
                     pdf_bytes = generate_pdf_report(st.session_state)
                     st.session_state['pdf_report'] = pdf_bytes
-                    st.success("✅ PDF report generated!")
+                    st.success("PDF report generated!")
                 except Exception as e:
                     st.error(f"Error generating PDF: {str(e)}")
     
     with col2:
-        if st.button("🌐 Generate HTML Report", type="primary", use_container_width=True):
+        if st.button("Generate HTML Report", type="primary", use_container_width=True):
             with st.spinner("Generating HTML report..."):
                 try:
                     html_content = generate_html_report(st.session_state)
                     st.session_state['html_report'] = html_content
-                    st.success("✅ HTML report generated!")
+                    st.success("HTML report generated!")
                 except Exception as e:
                     st.error(f"Error generating HTML: {str(e)}")
     
     with col3:
-        if st.button("📝 Generate Markdown Report", type="primary", use_container_width=True):
+        if st.button("Generate Markdown Report", type="primary", use_container_width=True):
             with st.spinner("Generating Markdown report..."):
                 try:
                     md_content = generate_markdown_report(st.session_state)
                     st.session_state['md_report'] = md_content
-                    st.success("✅ Markdown report generated!")
+                    st.success("Markdown report generated!")
                 except Exception as e:
                     st.error(f"Error generating Markdown: {str(e)}")
     
     st.markdown("---")
     
     # Download buttons
-    st.subheader("📥 Download Generated Reports")
+    st.subheader("Download Generated Reports")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
         if 'pdf_report' in st.session_state:
             st.download_button(
-                label="📄 Download PDF",
+                label="Download PDF",
                 data=st.session_state['pdf_report'],
                 file_name="automl_report.pdf",
                 mime="application/pdf"
@@ -739,7 +772,7 @@ def render_report_generation_page():
     with col2:
         if 'html_report' in st.session_state:
             st.download_button(
-                label="🌐 Download HTML",
+                label="Download HTML",
                 data=st.session_state['html_report'],
                 file_name="automl_report.html",
                 mime="text/html"
@@ -750,7 +783,7 @@ def render_report_generation_page():
     with col3:
         if 'md_report' in st.session_state:
             st.download_button(
-                label="📝 Download Markdown",
+                label="Download Markdown",
                 data=st.session_state['md_report'],
                 file_name="automl_report.md",
                 mime="text/markdown"
@@ -761,7 +794,7 @@ def render_report_generation_page():
     # Preview HTML report
     if 'html_report' in st.session_state:
         st.markdown("---")
-        st.subheader("👀 Report Preview")
+        st.subheader("Report Preview")
         
         with st.expander("Preview HTML Report", expanded=False):
             st.components.v1.html(st.session_state['html_report'], height=600, scrolling=True)

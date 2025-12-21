@@ -69,17 +69,17 @@ def display_file_info(uploaded_file, df):
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("📄 File Name", uploaded_file.name)
+        st.metric("File Name", uploaded_file.name)
     with col2:
-        st.metric("📊 File Size", format_bytes(uploaded_file.size))
+        st.metric("File Size", format_bytes(uploaded_file.size))
     with col3:
         memory_usage = df.memory_usage(deep=True).sum()
-        st.metric("💾 Memory Usage", format_bytes(memory_usage))
+        st.metric("Memory Usage", format_bytes(memory_usage))
 
 
 def display_dataset_metadata(df):
     """Display comprehensive dataset metadata."""
-    st.subheader("📋 Dataset Overview")
+    st.subheader("Dataset Overview")
     
     # Basic info
     col1, col2, col3, col4 = st.columns(4)
@@ -98,20 +98,20 @@ def display_dataset_metadata(df):
     column_types = detect_column_types(df)
     
     st.markdown("---")
-    st.subheader("📊 Column Types")
+    st.subheader("Column Types")
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.info(f"🔢 Numerical: {len(column_types['numerical'])}")
+        st.info(f"Numerical: {len(column_types['numerical'])}")
     with col2:
-        st.info(f"📝 Categorical: {len(column_types['categorical'])}")
+        st.info(f"Categorical: {len(column_types['categorical'])}")
     with col3:
-        st.info(f"📅 Datetime: {len(column_types['datetime'])}")
+        st.info(f"Datetime: {len(column_types['datetime'])}")
     with col4:
-        st.info(f"✅ Boolean: {len(column_types['boolean'])}")
+        st.info(f"Boolean: {len(column_types['boolean'])}")
     
     # Column details table
-    with st.expander("🔍 View Column Details", expanded=False):
+    with st.expander("View Column Details", expanded=False):
         col_info = []
         for col in df.columns:
             dtype = str(df[col].dtype)
@@ -136,7 +136,7 @@ def display_dataset_metadata(df):
 
 def display_data_preview(df):
     """Display first and last rows of the dataset."""
-    st.subheader("👀 Data Preview")
+    st.subheader("Data Preview")
     
     tab1, tab2 = st.tabs(["First 10 Rows", "Last 5 Rows"])
     
@@ -149,7 +149,7 @@ def display_data_preview(df):
 
 def display_summary_statistics(df, column_types):
     """Display summary statistics for numerical and categorical columns."""
-    st.subheader("📈 Summary Statistics")
+    st.subheader("Summary Statistics")
     
     tab1, tab2 = st.tabs(["Numerical Columns", "Categorical Columns"])
     
@@ -194,13 +194,13 @@ def display_summary_statistics(df, column_types):
 
 def target_variable_selection(df):
     """UI for selecting target variable."""
-    st.subheader("🎯 Target Variable Selection")
+    st.subheader("Target Variable Selection")
     
     # Detect potential targets
     potential_targets = detect_potential_targets(df)
     
     if potential_targets:
-        st.info(f"💡 Potential target columns detected: {', '.join(potential_targets)}")
+        st.info(f"Potential target columns detected: {', '.join(potential_targets)}")
     
     # Selection dropdown
     all_columns = df.columns.tolist()
@@ -215,7 +215,7 @@ def target_variable_selection(df):
         st.session_state['target_column'] = target_col
         
         # Display class distribution
-        st.markdown("#### 📊 Class Distribution")
+        st.markdown("#### Class Distribution")
         
         dist_df = get_class_distribution(df[target_col])
         
@@ -243,18 +243,18 @@ def target_variable_selection(df):
         
         if imbalanced:
             if minority_pct < 5:
-                st.error(f"⚠️ **Severe Class Imbalance Detected!** Class '{minority_class}' represents only {minority_pct:.2f}% of the data.")
+                st.error(f"**Severe Class Imbalance Detected!** Class '{minority_class}' represents only {minority_pct:.2f}% of the data.")
             else:
-                st.warning(f"⚠️ **Class Imbalance Detected!** Class '{minority_class}' represents only {minority_pct:.2f}% of the data.")
+                st.warning(f"**Class Imbalance Detected!** Class '{minority_class}' represents only {minority_pct:.2f}% of the data.")
             
-            st.info("💡 Consider using SMOTE, class weights, or collecting more data for the minority class.")
+            st.info("Consider using SMOTE, class weights, or collecting more data for the minority class.")
         else:
-            st.success("✅ Class distribution appears balanced.")
+            st.success("Class distribution appears balanced.")
         
         # Check for missing values in target
         target_missing = df[target_col].isnull().sum()
         if target_missing > 0:
-            st.error(f"🚨 Target variable has {target_missing} missing values! These rows will need to be removed.")
+            st.error(f"Target variable has {target_missing} missing values! These rows will need to be removed.")
         
         return target_col
     
@@ -263,7 +263,7 @@ def target_variable_selection(df):
 
 def render_upload_page():
     """Render the complete upload page."""
-    st.header("📤 Upload Dataset")
+    st.header("Upload Dataset")
     
     st.markdown("""
     Upload your dataset to begin the AutoML process. 
@@ -284,15 +284,15 @@ def render_upload_page():
     sample_col1, sample_col2, sample_col3 = st.columns(3)
     
     with sample_col1:
-        if st.button("🌸 Iris Dataset", use_container_width=True):
+        if st.button("Iris Dataset", use_container_width=True):
             st.session_state['use_sample'] = 'iris'
     
     with sample_col2:
-        if st.button("🚢 Titanic Dataset", use_container_width=True):
+        if st.button("Titanic Dataset", use_container_width=True):
             st.session_state['use_sample'] = 'titanic'
     
     with sample_col3:
-        if st.button("💳 Credit Fraud Dataset", use_container_width=True):
+        if st.button("Credit Fraud Dataset", use_container_width=True):
             st.session_state['use_sample'] = 'credit_fraud'
     
     # Load sample dataset if selected
@@ -302,7 +302,7 @@ def render_upload_page():
             df = pd.read_csv(f"sample_datasets/{sample_name}.csv")
             st.session_state['data'] = df
             st.session_state['file_name'] = f"{sample_name}.csv"
-            st.success(f"✅ Loaded {sample_name} sample dataset!")
+            st.success(f"Loaded {sample_name} sample dataset!")
             st.session_state['use_sample'] = None
         except Exception as e:
             st.error(f"Error loading sample dataset: {str(e)}")
@@ -313,22 +313,22 @@ def render_upload_page():
             df, encoding, error = load_file(uploaded_file)
         
         if error:
-            st.error(f"❌ {error}")
+            st.error(f"{error}")
         else:
             # Validate dataset
             is_valid, errors = validate_dataframe(df)
             
             if not is_valid:
                 for err in errors:
-                    st.error(f"❌ {err}")
+                    st.error(f"{err}")
             else:
                 st.session_state['data'] = df
                 st.session_state['file_name'] = uploaded_file.name
                 
                 if encoding:
-                    st.caption(f"📝 Detected encoding: {encoding}")
+                    st.caption(f"Detected encoding: {encoding}")
                 
-                st.success("✅ Dataset loaded successfully!")
+                st.success("Dataset loaded successfully!")
     
     # Display dataset info if loaded
     if 'data' in st.session_state and st.session_state['data'] is not None:
@@ -338,7 +338,7 @@ def render_upload_page():
         
         # File info
         if 'file_name' in st.session_state:
-            st.info(f"📄 Current dataset: **{st.session_state['file_name']}**")
+            st.info(f"Current dataset: **{st.session_state['file_name']}**")
         
         # Metadata
         column_types = display_dataset_metadata(df)
@@ -355,4 +355,12 @@ def render_upload_page():
         target_col = target_variable_selection(df)
         
         if target_col:
-            st.success("✅ Target variable selected. Proceed to Exploratory Data Analysis.")
+            st.success("Target variable selected. Proceed to Exploratory Data Analysis.")
+            
+            # Continue button
+            st.markdown("---")
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col2:
+                if st.button("Continue to EDA", type="primary", use_container_width=True):
+                    st.session_state['current_page'] = 'eda'
+                    st.rerun()

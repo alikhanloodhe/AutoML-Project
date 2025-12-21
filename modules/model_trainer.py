@@ -228,10 +228,10 @@ def load_model(filename):
 
 def render_model_training_page():
     """Render the model training page."""
-    st.header("🤖 Model Training")
+    st.header("Model Training")
     
     if not st.session_state.get('preprocessing_done', False):
-        st.warning("⚠️ Please complete preprocessing first!")
+        st.warning("Please complete preprocessing first!")
         return
     
     X_train = st.session_state.get('X_train')
@@ -240,11 +240,11 @@ def render_model_training_page():
     y_test = st.session_state.get('y_test')
     
     if X_train is None:
-        st.warning("⚠️ No training data available!")
+        st.warning("No training data available!")
         return
     
     # Info
-    st.info(f"📊 Training: {len(X_train)} samples, {X_train.shape[1]} features | Test: {len(X_test)} samples")
+    st.info(f"Training: {len(X_train)} samples, {X_train.shape[1]} features | Test: {len(X_test)} samples")
     
     mode = st.session_state.get('mode', 'Beginner')
     use_class_weights = st.session_state.get('use_class_weights', False)
@@ -253,7 +253,7 @@ def render_model_training_page():
     all_models = list(HYPERPARAMETERS.keys())
     
     if mode == "Beginner":
-        st.markdown("### 🎓 Beginner Mode - Train All Models")
+        st.markdown("### Beginner Mode - Train All Models")
         st.markdown("All 7 classifiers will be trained with smart hyperparameter tuning.")
         
         selected_models = all_models
@@ -261,12 +261,12 @@ def render_model_training_page():
         use_grid_search = False
         
         # Show model descriptions
-        with st.expander("📚 Model Descriptions", expanded=False):
+        with st.expander("Model Descriptions", expanded=False):
             for model_name, description in MODEL_DESCRIPTIONS.items():
                 st.markdown(f"**{model_name}:** {description}")
     
     else:  # Expert mode
-        st.markdown("### 🔬 Expert Mode - Custom Training")
+        st.markdown("### Expert Mode - Custom Training")
         
         # Model selection
         selected_models = st.multiselect(
@@ -292,7 +292,7 @@ def render_model_training_page():
         )
     
     # Train button
-    if st.button("🚀 Train Models", type="primary", use_container_width=True, disabled=len(selected_models) == 0):
+    if st.button("Train Models", type="primary", use_container_width=True, disabled=len(selected_models) == 0):
         
         class_weight = 'balanced' if use_class_weights else None
         
@@ -317,14 +317,14 @@ def render_model_training_page():
             )
         
         progress_bar.progress(1.0)
-        status_text.markdown("**✅ Training complete!**")
+        status_text.markdown("**Training complete!**")
         
         # Store results
         st.session_state['model_results'] = results
         st.session_state['models_trained'] = True
         
         # Display summary
-        st.success(f"✅ Trained {len(results)} models successfully!")
+        st.success(f"Trained {len(results)} models successfully!")
         
         # Quick results table
         results_data = []
@@ -357,7 +357,7 @@ def render_model_training_page():
             best_result = successful_results[best_model_name]
             
             st.markdown("---")
-            st.markdown("### 🏆 Best Model")
+            st.markdown("### Best Model")
             
             col1, col2, col3, col4 = st.columns(4)
             with col1:
@@ -378,7 +378,7 @@ def render_model_training_page():
     # Show previous results if available
     elif st.session_state.get('models_trained', False):
         st.markdown("---")
-        st.subheader("📊 Previous Training Results")
+        st.subheader("Previous Training Results")
         
         results = st.session_state.get('model_results', {})
         
@@ -399,6 +399,15 @@ def render_model_training_page():
             results_df = pd.DataFrame(results_data)
             st.dataframe(results_df, use_container_width=True, hide_index=True)
             
-            if st.button("🔄 Retrain Models"):
+            if st.button("Retrain Models"):
                 st.session_state['models_trained'] = False
+                st.rerun()
+    
+    # Continue button if models are trained
+    if st.session_state.get('models_trained', False):
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("Continue to Model Comparison", type="primary", use_container_width=True):
+                st.session_state['current_page'] = 'comparison'
                 st.rerun()

@@ -244,17 +244,17 @@ def get_downloadable_results(results, comparison_df):
 
 def render_model_comparison_page():
     """Render the model comparison page."""
-    st.header("📈 Model Comparison Dashboard")
+    st.header("Model Comparison Dashboard")
     
     if not st.session_state.get('models_trained', False):
-        st.warning("⚠️ Please train models first!")
+        st.warning("Please train models first!")
         return
     
     results = st.session_state.get('model_results', {})
     y_test = st.session_state.get('y_test')
     
     if not results:
-        st.warning("⚠️ No model results available!")
+        st.warning("No model results available!")
         return
     
     # Create comparison dataframe
@@ -279,7 +279,7 @@ def render_model_comparison_page():
     st.markdown("---")
     
     # Comparison Table
-    st.subheader("📊 Model Comparison Table")
+    st.subheader("Model Comparison Table")
     
     # Metric selection for sorting
     sort_metric = st.selectbox(
@@ -294,10 +294,10 @@ def render_model_comparison_page():
     def highlight_best(s):
         if s.name in ['F1-Score', 'Accuracy', 'Precision', 'Recall', 'ROC-AUC']:
             is_best = s == s.max()
-            return ['background-color: #90EE90' if v else '' for v in is_best]
+            return ['background-color: #4CAF50; color: white; font-weight: bold' if v else '' for v in is_best]
         elif s.name == 'Training Time (s)':
             is_best = s == s.min()
-            return ['background-color: #90EE90' if v else '' for v in is_best]
+            return ['background-color: #4CAF50; color: white; font-weight: bold' if v else '' for v in is_best]
         return ['' for _ in s]
     
     styled_df = sorted_df.style.apply(highlight_best)
@@ -306,7 +306,7 @@ def render_model_comparison_page():
     st.markdown("---")
     
     # Rankings
-    st.subheader("🏆 Model Rankings")
+    st.subheader("Model Rankings")
     
     metric_for_ranking = st.selectbox(
         "Rank by:",
@@ -322,7 +322,7 @@ def render_model_comparison_page():
     st.markdown("---")
     
     # Visualizations
-    st.subheader("📊 Visualizations")
+    st.subheader("Visualizations")
     
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "Metric Comparison", "All Metrics", "Training Time", "ROC Curves", "Confusion Matrices"
@@ -382,7 +382,7 @@ def render_model_comparison_page():
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # Classification report
-                with st.expander("📋 Classification Report"):
+                with st.expander("Classification Report"):
                     y_test = st.session_state.get('y_test')
                     report = classification_report(y_test, result['y_pred'], output_dict=True)
                     report_df = pd.DataFrame(report).transpose()
@@ -391,11 +391,25 @@ def render_model_comparison_page():
     st.markdown("---")
     
     # Best Model Details
-    st.subheader("🌟 Best Model Details")
+    st.subheader("Best Model Details")
     
     best_idx = comparison_df['F1-Score'].idxmax()
     best_model_name = comparison_df.loc[best_idx, 'Model']
     best_result = results[best_model_name]
+    
+    # Metric cards
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Accuracy", f"{best_result['accuracy']:.4f}")
+    with col2:
+        st.metric("F1-Score", f"{best_result['f1_score']:.4f}")
+    with col3:
+        if best_result['roc_auc']:
+            st.metric("ROC-AUC", f"{best_result['roc_auc']:.4f}")
+        else:
+            st.metric("ROC-AUC", "N/A")
+    
+    st.markdown("---")
     
     col1, col2 = st.columns(2)
     
@@ -420,7 +434,7 @@ def render_model_comparison_page():
     st.markdown("---")
     
     # Downloads
-    st.subheader("📥 Download Results")
+    st.subheader("Download Results")
     
     csv_data, json_data = get_downloadable_results(results, comparison_df)
     
@@ -428,7 +442,7 @@ def render_model_comparison_page():
     
     with col1:
         st.download_button(
-            label="📄 Download CSV",
+            label="Download CSV",
             data=csv_data,
             file_name="model_comparison.csv",
             mime="text/csv"
@@ -436,7 +450,7 @@ def render_model_comparison_page():
     
     with col2:
         st.download_button(
-            label="📋 Download JSON",
+            label="Download JSON",
             data=json_data,
             file_name="model_results.json",
             mime="application/json"
@@ -450,10 +464,18 @@ def render_model_comparison_page():
             model_bytes.seek(0)
             
             st.download_button(
-                label="🤖 Download Best Model",
+                label="Download Best Model",
                 data=model_bytes,
                 file_name=f"{best_model_name.replace(' ', '_')}_model.pkl",
                 mime="application/octet-stream"
             )
     
-    st.success("✅ Model comparison complete! Proceed to Generate Report for a comprehensive PDF report.")
+    st.success("Model comparison complete! Proceed to Generate Report for a comprehensive PDF report.")
+    
+    # Continue button
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("Continue to Generate Report", type="primary", use_container_width=True):
+            st.session_state['current_page'] = 'report'
+            st.rerun()

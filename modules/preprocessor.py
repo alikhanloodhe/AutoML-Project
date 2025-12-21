@@ -207,7 +207,7 @@ def encode_categorical(df, column_types, method='onehot', target_col=None):
         total_categories = sum(df_encoded[col].nunique() for col in cat_cols)
         
         if total_categories > 100:
-            st.warning(f"⚠️ One-hot encoding would create {total_categories} columns. Consider using target encoding for high cardinality columns.")
+            st.warning(f"One-hot encoding would create {total_categories} columns. Consider using target encoding for high cardinality columns.")
         
         df_encoded = pd.get_dummies(df_encoded, columns=cat_cols, drop_first=True, dtype=int)
     
@@ -265,7 +265,7 @@ def split_data(df, target_col, test_size=0.2, stratify=True, random_state=42):
             test_size=test_size, 
             random_state=random_state
         )
-        st.warning("⚠️ Stratified split failed. Using random split instead.")
+        st.warning("Stratified split failed. Using random split instead.")
     
     return X_train, X_test, y_train, y_test
 
@@ -273,7 +273,7 @@ def split_data(df, target_col, test_size=0.2, stratify=True, random_state=42):
 def apply_smote(X_train, y_train, random_state=42):
     """Apply SMOTE for handling class imbalance."""
     if not SMOTE_AVAILABLE:
-        st.warning("⚠️ SMOTE is not available (imbalanced-learn not installed or incompatible). Using original data.")
+        st.warning("SMOTE is not available (imbalanced-learn not installed or incompatible). Using original data.")
         return X_train, y_train, False
     
     try:
@@ -281,7 +281,7 @@ def apply_smote(X_train, y_train, random_state=42):
         X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
         return X_resampled, y_resampled, True
     except Exception as e:
-        st.warning(f"⚠️ SMOTE failed: {str(e)}. Using original data.")
+        st.warning(f"SMOTE failed: {str(e)}. Using original data.")
         return X_train, y_train, False
 
 
@@ -297,10 +297,10 @@ def encode_target(y_train, y_test):
 
 def render_preprocessing_page():
     """Render the preprocessing page."""
-    st.header("🔧 Data Preprocessing")
+    st.header("Data Preprocessing")
     
     if 'data' not in st.session_state or st.session_state['data'] is None:
-        st.warning("⚠️ Please upload a dataset first!")
+        st.warning("Please upload a dataset first!")
         return
     
     df = st.session_state['data']
@@ -309,19 +309,19 @@ def render_preprocessing_page():
     mode = st.session_state.get('mode', 'Beginner')
     
     if not target_col:
-        st.warning("⚠️ Please select a target variable in the Upload Dataset page first!")
+        st.warning("Please select a target variable in the Upload Dataset page first!")
         return
     
-    st.info(f"📊 Dataset: {len(df)} rows × {len(df.columns)} columns | Target: {target_col}")
+    st.info(f"Dataset: {len(df)} rows × {len(df.columns)} columns | Target: {target_col}")
     
     # Initialize pipeline
     pipeline = PreprocessingPipeline()
     
     if mode == "Beginner":
-        st.markdown("### 🎓 Beginner Mode - Automatic Preprocessing")
+        st.markdown("### Beginner Mode - Automatic Preprocessing")
         st.markdown("We'll apply smart defaults for preprocessing. Click the button below to proceed.")
         
-        if st.button("🚀 Apply Automatic Preprocessing", type="primary", use_container_width=True):
+        if st.button("Apply Automatic Preprocessing", type="primary", use_container_width=True):
             with st.spinner("Preprocessing data..."):
                 progress = st.progress(0)
                 status = st.empty()
@@ -364,7 +364,7 @@ def render_preprocessing_page():
                         pipeline.add_step("SMOTE", "Oversampling minority class", {}, target_col)
                 
                 progress.progress(100)
-                status.text("✅ Preprocessing complete!")
+                status.text("Preprocessing complete!")
                 
                 # Store results
                 st.session_state['X_train'] = X_train
@@ -377,7 +377,7 @@ def render_preprocessing_page():
                 st.session_state['preprocessing_done'] = True
                 
                 # Display summary
-                st.success("✅ Preprocessing complete!")
+                st.success("Preprocessing complete!")
                 
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
@@ -391,10 +391,10 @@ def render_preprocessing_page():
                     st.metric("Classes", n_classes)
     
     else:  # Expert mode
-        st.markdown("### 🔬 Expert Mode - Custom Preprocessing")
+        st.markdown("### Expert Mode - Custom Preprocessing")
         
         # Missing value imputation
-        with st.expander("1️⃣ Missing Value Imputation", expanded=True):
+        with st.expander("1⃣ Missing Value Imputation", expanded=True):
             col1, col2 = st.columns(2)
             with col1:
                 strategy_num = st.selectbox(
@@ -410,7 +410,7 @@ def render_preprocessing_page():
                 )
         
         # Outlier handling
-        with st.expander("2️⃣ Outlier Handling", expanded=True):
+        with st.expander("2⃣ Outlier Handling", expanded=True):
             outlier_method = st.selectbox(
                 "Outlier handling method:",
                 ["cap", "remove", "log", "none"],
@@ -427,7 +427,7 @@ def render_preprocessing_page():
                 lower_pct, upper_pct = 5, 95
         
         # Categorical encoding
-        with st.expander("3️⃣ Categorical Encoding", expanded=True):
+        with st.expander("3⃣ Categorical Encoding", expanded=True):
             encoding_method = st.selectbox(
                 "Encoding method:",
                 ["onehot", "label", "frequency", "target"],
@@ -435,7 +435,7 @@ def render_preprocessing_page():
             )
         
         # Feature scaling
-        with st.expander("4️⃣ Feature Scaling", expanded=True):
+        with st.expander("4⃣ Feature Scaling", expanded=True):
             scaling_method = st.selectbox(
                 "Scaling method:",
                 ["standard", "minmax", "robust", "none"],
@@ -443,7 +443,7 @@ def render_preprocessing_page():
             )
         
         # Train-test split
-        with st.expander("5️⃣ Train-Test Split", expanded=True):
+        with st.expander("5⃣ Train-Test Split", expanded=True):
             col1, col2, col3 = st.columns(3)
             with col1:
                 test_size = st.slider("Test size", 0.1, 0.4, 0.2, 0.05)
@@ -459,7 +459,7 @@ def render_preprocessing_page():
         )
         
         # Apply preprocessing
-        if st.button("🚀 Apply Custom Preprocessing", type="primary", use_container_width=True):
+        if st.button("Apply Custom Preprocessing", type="primary", use_container_width=True):
             with st.spinner("Preprocessing data..."):
                 progress = st.progress(0)
                 
@@ -507,7 +507,7 @@ def render_preprocessing_page():
                 st.session_state['feature_scaler'] = scaler
                 st.session_state['preprocessing_done'] = True
                 
-                st.success("✅ Preprocessing complete!")
+                st.success("Preprocessing complete!")
                 
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
@@ -523,7 +523,7 @@ def render_preprocessing_page():
     # Show preprocessing summary if done
     if st.session_state.get('preprocessing_done', False):
         st.markdown("---")
-        st.subheader("📋 Preprocessing Summary")
+        st.subheader("Preprocessing Summary")
         
         pipeline = st.session_state.get('preprocessing_pipeline')
         if pipeline:
@@ -537,4 +537,12 @@ def render_preprocessing_page():
             dist_df = pd.DataFrame({'Class': unique, 'Count': counts, 'Percentage': (counts / len(y_train) * 100).round(2)})
             st.dataframe(dist_df, use_container_width=True, hide_index=True)
         
-        st.success("✅ Data is ready for model training. Proceed to Feature Engineering or Model Training.")
+        st.success("Data is ready for model training. Proceed to Feature Engineering or Model Training.")
+        
+        # Continue button
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("Continue to Feature Engineering", type="primary", use_container_width=True):
+                st.session_state['current_page'] = 'features'
+                st.rerun()

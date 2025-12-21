@@ -109,6 +109,13 @@ st.markdown("""
         border: 1px solid rgba(102, 126, 234, 0.2);
         text-align: center;
         transition: all 0.3s ease;
+        height: 100%;
+        min-height: 150px;
+        display: flex;
+        margin-bottom: 10px;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
     }
     
     .feature-card:hover {
@@ -223,10 +230,26 @@ st.markdown("""
         border-radius: 8px;
         padding: 10px 20px;
         font-weight: 500;
+        color: rgba(255, 255, 255, 0.6);
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.05);
     }
     
     .stTabs [aria-selected="true"] {
         background: var(--primary-gradient);
+        color: #ffffff !important;
+    }
+    
+    .stTabs [data-baseweb="tab"] button {
+        color: inherit !important;
+    }
+    
+    .stTabs [data-baseweb="tab"] p {
+        color: inherit !important;
     }
     
     /* Progress */
@@ -370,7 +393,7 @@ st.markdown("""
     .custom-divider {
         height: 1px;
         background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-        margin: 32px 0;
+        margin: 32px 0 20px 0;
     }
     
     /* Team Card */
@@ -433,12 +456,19 @@ def init_session_state():
         'best_model': None,
         'best_model_name': None,
         'apply_smote': False,
-        'use_class_weights': False
+        'use_class_weights': False,
+        'current_page': 'Home'
     }
     
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+
+def navigate_to_page(page_name):
+    """Navigate to a specific page by updating session state."""
+    st.session_state['current_page'] = page_name
+    st.rerun()
 
 
 def render_home_page():
@@ -457,6 +487,7 @@ def render_home_page():
     
     # Mode Selection
     st.markdown("## Choose Your Experience")
+    st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     
@@ -477,6 +508,7 @@ def render_home_page():
         </div>
         """, unsafe_allow_html=True)
         
+        st.markdown("<div style='margin-bottom: 16px;'></div>", unsafe_allow_html=True)
         if st.button("Select Beginner Mode", key="beginner_btn", use_container_width=True):
             st.session_state['mode'] = 'Beginner'
             st.rerun()
@@ -496,14 +528,25 @@ def render_home_page():
         </div>
         """, unsafe_allow_html=True)
         
+        st.markdown("<div style='margin-bottom: 16px;'></div>", unsafe_allow_html=True)
         if st.button("Select Expert Mode", key="expert_btn", use_container_width=True):
             st.session_state['mode'] = 'Expert'
+            st.rerun()
+    
+    st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
+    
+    # Start button
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("Start Your AutoML Journey", type="primary", use_container_width=True, key="start_btn"):
+            st.session_state['current_page'] = 'upload'
             st.rerun()
     
     st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
     
     # Features Section
     st.markdown("## Features")
+    st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
     
     features = [
         ("Smart Upload", "CSV and Excel support with auto-encoding"),
@@ -555,32 +598,32 @@ def render_home_page():
     
     st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
     
-    # Team Section
-    st.markdown("## Team")
+    # # Team Section
+    # st.markdown("## Team")
     
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        tcol1, tcol2 = st.columns(2)
-        with tcol1:
-            st.markdown("""
-            <div class="team-card">
-                <div class="team-name">Ali Asghar Khan Lodhi</div>
-                <div class="team-roll">Roll #: 478734</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with tcol2:
-            st.markdown("""
-            <div class="team-card">
-                <div class="team-name">Muhammad Saad Akhtar</div>
-                <div class="team-roll">Roll #: 458102</div>
-            </div>
-            """, unsafe_allow_html=True)
+    # col1, col2, col3 = st.columns([1, 2, 1])
+    # with col2:
+    #     tcol1, tcol2 = st.columns(2)
+    #     with tcol1:
+    #         st.markdown("""
+    #         <div class="team-card">
+    #             <div class="team-name">Ali Asghar Khan Lodhi</div>
+    #             <div class="team-roll">Roll #: 478734</div>
+    #         </div>
+    #         """, unsafe_allow_html=True)
+    #     with tcol2:
+    #         st.markdown("""
+    #         <div class="team-card">
+    #             <div class="team-name">Muhammad Saad Akhtar</div>
+    #             <div class="team-roll">Roll #: 458102</div>
+    #         </div>
+    #         """, unsafe_allow_html=True)
     
-    st.markdown("""
-    <div style="text-align: center; margin-top: 32px; color: rgba(255,255,255,0.4); font-size: 0.9rem;">
-        CS-245 Machine Learning Course - NUST SEECS - 2024
-    </div>
-    """, unsafe_allow_html=True)
+    # st.markdown("""
+    # <div style="text-align: center; margin-top: 32px; color: rgba(255,255,255,0.4); font-size: 0.9rem;">
+    #     CS-245 Machine Learning Course - NUST SEECS - 2024
+    # </div>
+    # """, unsafe_allow_html=True)
 
 
 def render_sidebar():
@@ -643,13 +686,25 @@ def render_sidebar():
         ("Generate Report", "report")
     ]
     
+    # Get current page from session state or use radio selection
+    if 'current_page' in st.session_state and st.session_state['current_page']:
+        # Find the display name for the current page
+        current_display = next((p[0] for p in pages if p[1] == st.session_state['current_page']), "Home")
+        default_index = next((i for i, p in enumerate(pages) if p[0] == current_display), 0)
+    else:
+        default_index = 0
+    
     selected_page = st.sidebar.radio(
         "Select Page",
         [page[0] for page in pages],
+        index=default_index,
         label_visibility="collapsed"
     )
     
     page_key = next((p[1] for p in pages if p[0] == selected_page), "home")
+    
+    # Update current page in session state
+    st.session_state['current_page'] = page_key
     
     st.sidebar.markdown('<div class="custom-divider" style="margin: 16px 0;"></div>', unsafe_allow_html=True)
     

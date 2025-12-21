@@ -213,7 +213,7 @@ def display_dataframe_with_download(df, filename="data.csv", key=None):
     
     csv = df.to_csv(index=False)
     st.download_button(
-        label="📥 Download CSV",
+        label="Download CSV",
         data=csv,
         file_name=filename,
         mime="text/csv",

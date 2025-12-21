@@ -40,7 +40,7 @@ def detect_missing_value_issues(df):
                 column=col,
                 message=f"Column '{col}' has {missing_pct:.1f}% missing values",
                 suggestion="Consider dropping this column or using advanced imputation",
-                actions=[("Drop Column", f"drop_{col}"), ("Keep & Impute", f"impute_{col}"), ("Skip", f"skip_{col}")]
+                actions=[("Drop Column", f"drop_{col}"), ("Keep & Impute", f"impute_{col}")]
             ))
         elif missing_pct > 5:
             is_numeric = pd.api.types.is_numeric_dtype(df[col])
@@ -74,7 +74,7 @@ def detect_target_issues(df, target_col):
             column=target_col,
             message=f"Target variable has {target_missing} missing values",
             suggestion="Remove rows with missing target values",
-            actions=[("Remove Rows", "remove_target_missing"), ("Cancel", "cancel")]
+            actions=[("Remove Rows", "remove_target_missing")]
         ))
     
     # Class imbalance
@@ -88,7 +88,7 @@ def detect_target_issues(df, target_col):
                 column=target_col,
                 message=f"Severe class imbalance detected. Class '{minority_class}': {minority_pct:.1f}%",
                 suggestion="Consider SMOTE, class weights, or collecting more data",
-                actions=[("Apply SMOTE", "apply_smote"), ("Use Class Weights", "use_weights"), ("Continue Anyway", "skip_imbalance")]
+                actions=[("Apply SMOTE", "apply_smote"), ("Use Class Weights", "use_weights")]
             ))
         else:
             issues.append(Issue(
@@ -243,9 +243,9 @@ def detect_all_issues(df, target_col=None, column_types=None):
 def display_issue(issue, idx):
     """Display a single issue with action buttons."""
     severity_colors = {
-        Issue.CRITICAL: "🔴",
-        Issue.MODERATE: "🟡",
-        Issue.MINOR: "🔵"
+        Issue.CRITICAL: "",
+        Issue.MODERATE: "",
+        Issue.MINOR: ""
     }
     
     severity_styles = {
@@ -267,16 +267,87 @@ def display_issue(issue, idx):
         else:
             st.info(f"**{issue.message}**")
         
-        st.markdown(f"💡 **Suggestion:** {issue.suggestion}")
+        st.markdown(f"**Suggestion:** {issue.suggestion}")
         
-        # Action buttons
-        cols = st.columns(len(issue.actions))
+        # Check if we're showing sub-options for this issue
+        show_suboptions_key = f"show_suboptions_{idx}"
+        action_type_key = f"action_type_{idx}"
+        
+        # Initialize session state for this issue
+        if show_suboptions_key not in st.session_state:
+            st.session_state[show_suboptions_key] = False
+        if action_type_key not in st.session_state:
+            st.session_state[action_type_key] = None
         
         action_taken = None
-        for col_idx, (action_name, action_key) in enumerate(issue.actions):
-            with cols[col_idx]:
-                if st.button(action_name, key=f"{action_key}_{idx}", use_container_width=True):
-                    action_taken = action_key
+        
+        # If not showing sub-options, show main action buttons
+        if not st.session_state[show_suboptions_key]:
+            cols = st.columns(len(issue.actions))
+            
+            for col_idx, (action_name, action_key) in enumerate(issue.actions):
+                with cols[col_idx]:
+                    if st.button(action_name, key=f"{action_key}_{idx}", use_container_width=True):
+                        # Check if this action needs sub-options
+                        if action_key.startswith("impute_"):
+                            st.session_state[show_suboptions_key] = True
+                            st.session_state[action_type_key] = action_key
+                            st.rerun()
+                        else:
+                            # Direct action
+                            action_taken = action_key
+        else:
+            # Show sub-options based on action type
+            col_name = st.session_state[action_type_key].replace("impute_", "")
+            df = st.session_state.get('data')
+            
+            if pd.api.types.is_numeric_dtype(df[col_name]):
+                st.markdown("**Select imputation method for numeric column:**")
+                subcols = st.columns(4)
+                with subcols[0]:
+                    if st.button("Mean", key=f"mean_{idx}", use_container_width=True):
+                        action_taken = f"impute_mean_{col_name}"
+                        st.session_state[show_suboptions_key] = False
+                        st.session_state[action_type_key] = None
+                with subcols[1]:
+                    if st.button("Median", key=f"median_{idx}", use_container_width=True):
+                        action_taken = f"impute_median_{col_name}"
+                        st.session_state[show_suboptions_key] = False
+                        st.session_state[action_type_key] = None
+                with subcols[2]:
+                    if st.button("KNN", key=f"knn_{idx}", use_container_width=True):
+                        action_taken = f"impute_knn_{col_name}"
+                        st.session_state[show_suboptions_key] = False
+                        st.session_state[action_type_key] = None
+                with subcols[3]:
+                    if st.button("Cancel", key=f"cancel_impute_{idx}", use_container_width=True):
+                        st.session_state[show_suboptions_key] = False
+                        st.session_state[action_type_key] = None
+                        st.rerun()
+            else:
+                # Categorical column
+                st.markdown("**Select imputation method for categorical column:**")
+                subcols = st.columns(4)
+                with subcols[0]:
+                    if st.button("Mode", key=f"mode_{idx}", use_container_width=True):
+                        action_taken = f"impute_mode_{col_name}"
+                        st.session_state[show_suboptions_key] = False
+                        st.session_state[action_type_key] = None
+                with subcols[1]:
+                    if st.button("Constant", key=f"constant_{idx}", use_container_width=True):
+                        action_taken = f"impute_constant_{col_name}"
+                        st.session_state[show_suboptions_key] = False
+                        st.session_state[action_type_key] = None
+                with subcols[2]:
+                    if st.button("Missing Category", key=f"missing_{idx}", use_container_width=True):
+                        action_taken = f"impute_missing_{col_name}"
+                        st.session_state[show_suboptions_key] = False
+                        st.session_state[action_type_key] = None
+                with subcols[3]:
+                    if st.button("Cancel", key=f"cancel_impute_{idx}", use_container_width=True):
+                        st.session_state[show_suboptions_key] = False
+                        st.session_state[action_type_key] = None
+                        st.rerun()
         
         st.markdown("---")
         
@@ -288,7 +359,78 @@ def apply_issue_fix(df, action_key, issue):
     modified_df = df.copy()
     message = ""
     
-    if action_key.startswith("drop_"):
+    # Handle imputation actions
+    if action_key.startswith("impute_mean_"):
+        col_name = action_key.replace("impute_mean_", "")
+        if col_name in modified_df.columns:
+            mean_val = modified_df[col_name].mean()
+            modified_df[col_name].fillna(mean_val, inplace=True)
+            message = f"Imputed '{col_name}' with mean ({mean_val:.2f})"
+    
+    elif action_key.startswith("impute_median_"):
+        col_name = action_key.replace("impute_median_", "")
+        if col_name in modified_df.columns:
+            median_val = modified_df[col_name].median()
+            modified_df[col_name].fillna(median_val, inplace=True)
+            message = f"Imputed '{col_name}' with median ({median_val:.2f})"
+    
+    elif action_key.startswith("impute_knn_"):
+        col_name = action_key.replace("impute_knn_", "")
+        if col_name in modified_df.columns:
+            try:
+                from sklearn.impute import KNNImputer
+                
+                # Count non-missing samples
+                non_missing_count = modified_df[col_name].notna().sum()
+                
+                # Adjust n_neighbors based on available data
+                n_neighbors = min(5, max(1, non_missing_count - 1))
+                
+                if n_neighbors >= 1 and non_missing_count >= 2:
+                    # Get numeric columns for KNN
+                    numeric_cols = modified_df.select_dtypes(include=[np.number]).columns.tolist()
+                    
+                    if col_name in numeric_cols and len(numeric_cols) > 0:
+                        # Apply KNN imputation
+                        imputer = KNNImputer(n_neighbors=n_neighbors)
+                        modified_df[numeric_cols] = imputer.fit_transform(modified_df[numeric_cols])
+                        message = f"Imputed '{col_name}' using KNN (n_neighbors={n_neighbors})"
+                    else:
+                        # Fallback to mean for single column or non-numeric
+                        mean_val = modified_df[col_name].mean()
+                        modified_df[col_name].fillna(mean_val, inplace=True)
+                        message = f"Imputed '{col_name}' with mean ({mean_val:.2f}) - KNN not applicable"
+                else:
+                    # Not enough data for KNN, use mean
+                    mean_val = modified_df[col_name].mean()
+                    modified_df[col_name].fillna(mean_val, inplace=True)
+                    message = f"Imputed '{col_name}' with mean ({mean_val:.2f}) - insufficient data for KNN"
+            except Exception as e:
+                # Fallback to mean if KNN fails
+                mean_val = modified_df[col_name].mean()
+                modified_df[col_name].fillna(mean_val, inplace=True)
+                message = f"Imputed '{col_name}' with mean ({mean_val:.2f}) - KNN failed"
+    
+    elif action_key.startswith("impute_mode_"):
+        col_name = action_key.replace("impute_mode_", "")
+        if col_name in modified_df.columns:
+            mode_val = modified_df[col_name].mode()[0] if len(modified_df[col_name].mode()) > 0 else 'Unknown'
+            modified_df[col_name].fillna(mode_val, inplace=True)
+            message = f"Imputed '{col_name}' with mode ('{mode_val}')"
+    
+    elif action_key.startswith("impute_constant_"):
+        col_name = action_key.replace("impute_constant_", "")
+        if col_name in modified_df.columns:
+            modified_df[col_name].fillna('Unknown', inplace=True)
+            message = f"Imputed '{col_name}' with constant 'Unknown'"
+    
+    elif action_key.startswith("impute_missing_"):
+        col_name = action_key.replace("impute_missing_", "")
+        if col_name in modified_df.columns:
+            modified_df[col_name].fillna('Missing', inplace=True)
+            message = f"Imputed '{col_name}' with 'Missing' category"
+    
+    elif action_key.startswith("drop_"):
         col_name = action_key.replace("drop_", "")
         if col_name in modified_df.columns:
             modified_df = modified_df.drop(columns=[col_name])
@@ -315,6 +457,30 @@ def apply_issue_fix(df, action_key, issue):
             modified_df[col_name] = modified_df[col_name].clip(lower, upper)
             message = f"Capped outliers in '{col_name}' at 5th and 95th percentiles"
     
+    elif action_key.startswith("keep_"):
+        # Keep action - extract column name and check issue type
+        col_name = action_key.replace("keep_", "")
+        # Track as ignored
+        if 'ignored_issues' not in st.session_state:
+            st.session_state['ignored_issues'] = []
+        issue_id = f"{issue.issue_type}_{issue.column}"
+        if issue_id not in st.session_state['ignored_issues']:
+            st.session_state['ignored_issues'].append(issue_id)
+        
+        if "outlier" in issue.issue_type.lower():
+            message = f"Kept outliers in '{col_name}' - moved to ignored issues"
+        else:
+            message = f"Kept '{col_name}' - moved to ignored issues"
+    
+    elif action_key.startswith("skip"):
+        # Skip - track as ignored
+        if 'ignored_issues' not in st.session_state:
+            st.session_state['ignored_issues'] = []
+        issue_id = f"{issue.issue_type}_{issue.column}"
+        if issue_id not in st.session_state['ignored_issues']:
+            st.session_state['ignored_issues'].append(issue_id)
+        message = f"Skipped '{issue.column}' - moved to ignored issues"
+    
     elif action_key.startswith("top20_"):
         col_name = action_key.replace("top20_", "")
         if col_name in modified_df.columns:
@@ -322,15 +488,22 @@ def apply_issue_fix(df, action_key, issue):
             modified_df[col_name] = modified_df[col_name].apply(lambda x: x if x in top_20 else 'Other')
             message = f"Kept top 20 categories in '{col_name}', replaced others with 'Other'"
     
+    elif action_key.startswith("target_enc_"):
+        col_name = action_key.replace("target_enc_", "")
+        if col_name in modified_df.columns:
+            # Mark for target encoding during preprocessing
+            if 'target_encode_cols' not in st.session_state:
+                st.session_state['target_encode_cols'] = []
+            if col_name not in st.session_state['target_encode_cols']:
+                st.session_state['target_encode_cols'].append(col_name)
+            message = f"Marked '{col_name}' for target encoding during preprocessing"
+    
     elif action_key == "remove_target_missing":
         target_col = issue.column
         before_count = len(modified_df)
         modified_df = modified_df.dropna(subset=[target_col])
         removed = before_count - len(modified_df)
         message = f"Removed {removed} rows with missing target values"
-    
-    elif action_key.startswith("skip") or action_key.startswith("keep") or action_key == "cancel":
-        message = "Skipped - no changes applied"
     
     elif action_key in ["apply_smote", "use_weights"]:
         # These will be handled in preprocessing
@@ -341,15 +514,18 @@ def apply_issue_fix(df, action_key, issue):
             st.session_state['use_class_weights'] = True
             message = "Class weights will be used during model training"
     
+    elif action_key == "skip_imbalance" or action_key == "continue" or action_key == "continue_anyway":
+        message = "Continued with imbalanced data"
+    
     return modified_df, message
 
 
 def render_issue_detection_page():
     """Render the issue detection page."""
-    st.header("⚠️ Issue Detection & Resolution")
+    st.header("Issue Detection & Resolution")
     
     if 'data' not in st.session_state or st.session_state['data'] is None:
-        st.warning("⚠️ Please upload a dataset first!")
+        st.warning("Please upload a dataset first!")
         return
     
     df = st.session_state['data']
@@ -364,35 +540,50 @@ def render_issue_detection_page():
     
     issues = st.session_state['detected_issues']
     
-    # Summary
-    critical_count = sum(1 for i in issues if i.severity == Issue.CRITICAL)
-    moderate_count = sum(1 for i in issues if i.severity == Issue.MODERATE)
-    minor_count = sum(1 for i in issues if i.severity == Issue.MINOR)
+    # Filter out ignored issues for the summary
+    ignored_issues_list = st.session_state.get('ignored_issues', [])
+    active_issues_count = sum(1 for issue in issues if f"{issue.issue_type}_{issue.column}" not in ignored_issues_list)
+    ignored_count = len(ignored_issues_list)
     
-    col1, col2, col3, col4 = st.columns(4)
+    # Summary - only count active issues
+    critical_count = sum(1 for i in issues if i.severity == Issue.CRITICAL and f"{i.issue_type}_{i.column}" not in ignored_issues_list)
+    moderate_count = sum(1 for i in issues if i.severity == Issue.MODERATE and f"{i.issue_type}_{i.column}" not in ignored_issues_list)
+    minor_count = sum(1 for i in issues if i.severity == Issue.MINOR and f"{i.issue_type}_{i.column}" not in ignored_issues_list)
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        st.metric("Total Issues", len(issues))
+        st.metric("Active Issues", active_issues_count)
     with col2:
-        st.metric("🔴 Critical", critical_count)
+        st.metric("Critical", critical_count)
     with col3:
-        st.metric("🟡 Moderate", moderate_count)
+        st.metric("Moderate", moderate_count)
     with col4:
-        st.metric("🔵 Minor", minor_count)
+        st.metric("Minor", minor_count)
+    with col5:
+        st.metric("Ignored", ignored_count)
     
     st.markdown("---")
     
-    if len(issues) == 0:
-        st.success("✅ No data quality issues detected! Your dataset is ready for preprocessing.")
+    if active_issues_count == 0:
+        st.success("No active data quality issues! Your dataset is ready for preprocessing.")
         st.session_state['issues_resolved'] = True
+        
+        # Continue button
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("Continue to Preprocessing", type="primary", use_container_width=True):
+                st.session_state['current_page'] = 'preprocessing'
+                st.rerun()
         return
     
     # Mode selection
     mode = st.session_state.get('mode', 'Beginner')
     
     if mode == "Beginner":
-        st.info("💡 **Beginner Mode:** We'll apply smart fixes automatically for common issues.")
+        st.info("**Beginner Mode:** We'll apply smart fixes automatically for common issues.")
         
-        if st.button("🔧 Auto-Fix All Issues", type="primary", use_container_width=True):
+        if st.button("Auto-Fix All Issues", type="primary", use_container_width=True):
             modified_df = df.copy()
             applied_fixes = []
             
@@ -432,7 +623,7 @@ def render_issue_detection_page():
             st.session_state['issues_resolved'] = True
             st.session_state['column_types'] = detect_column_types(modified_df)
             
-            st.success("✅ Applied automatic fixes!")
+            st.success("Applied automatic fixes!")
             for fix in applied_fixes:
                 st.write(f"• {fix}")
             
@@ -443,23 +634,62 @@ def render_issue_detection_page():
             st.rerun()
     
     else:  # Expert mode
-        st.info("💡 **Expert Mode:** Review each issue and decide how to handle it.")
+        st.info("**Expert Mode:** Review each issue and decide how to handle it.")
         
-        # Display each issue
-        for idx, issue in enumerate(issues):
-            action = display_issue(issue, idx)
-            
-            if action:
-                modified_df, message = apply_issue_fix(df, action, issue)
-                st.session_state['data'] = modified_df
-                st.session_state['column_types'] = detect_column_types(modified_df)
-                st.success(f"✅ {message}")
+        # Filter out ignored issues
+        ignored_issues_list = st.session_state.get('ignored_issues', [])
+        active_issues = []
+        ignored_issues_display = []
+        
+        for issue in issues:
+            issue_id = f"{issue.issue_type}_{issue.column}"
+            if issue_id in ignored_issues_list:
+                ignored_issues_display.append(issue)
+            else:
+                active_issues.append(issue)
+        
+        # Display active issues
+        if active_issues:
+            st.markdown("### Active Issues")
+            for idx, issue in enumerate(active_issues):
+                action = display_issue(issue, idx)
                 
-                # Re-detect issues
-                del st.session_state['detected_issues']
-                st.rerun()
+                if action:
+                    modified_df, message = apply_issue_fix(df, action, issue)
+                    st.session_state['data'] = modified_df
+                    st.session_state['column_types'] = detect_column_types(modified_df)
+                    st.success(f"{message}")
+                    
+                    # Re-detect issues
+                    del st.session_state['detected_issues']
+                    st.rerun()
+        else:
+            st.success("No active issues remaining!")
+        
+        # Display ignored issues section
+        if ignored_issues_display:
+            st.markdown("---")
+            with st.expander(f"📋 Ignored Issues ({len(ignored_issues_display)})", expanded=False):
+                for issue in ignored_issues_display:
+                    st.markdown(f"**{issue.issue_type}** - Column: `{issue.column}`")
+                    st.caption(issue.message)
+                
+                # Button to clear all ignored issues
+                if st.button("Clear All Ignored Issues", key="clear_ignored"):
+                    st.session_state['ignored_issues'] = []
+                    del st.session_state['detected_issues']
+                    st.rerun()
         
         # Mark as resolved button
-        if st.button("✅ Mark All Issues as Reviewed", type="primary", use_container_width=True):
+        if st.button("Mark All Issues as Reviewed", type="primary", use_container_width=True):
             st.session_state['issues_resolved'] = True
             st.success("Issues reviewed! Proceed to Preprocessing.")
+    
+    # Continue button if issues are resolved
+    if st.session_state.get('issues_resolved', False):
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("Continue to Preprocessing", type="primary", use_container_width=True):
+                st.session_state['current_page'] = 'preprocessing'
+                st.rerun()

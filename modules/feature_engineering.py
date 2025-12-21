@@ -193,10 +193,10 @@ def apply_pca(X, n_components=0.95, random_state=42):
 
 def render_feature_engineering_page():
     """Render the feature engineering page."""
-    st.header("🎯 Feature Engineering")
+    st.header("Feature Engineering")
     
     if not st.session_state.get('preprocessing_done', False):
-        st.warning("⚠️ Please complete preprocessing first!")
+        st.warning("Please complete preprocessing first!")
         return
     
     X_train = st.session_state.get('X_train')
@@ -205,10 +205,10 @@ def render_feature_engineering_page():
     y_test = st.session_state.get('y_test')
     
     if X_train is None:
-        st.warning("⚠️ No training data available. Please complete preprocessing first!")
+        st.warning("No training data available. Please complete preprocessing first!")
         return
     
-    st.info(f"📊 Current features: {X_train.shape[1]} | Training samples: {len(X_train)}")
+    st.info(f"Current features: {X_train.shape[1]} | Training samples: {len(X_train)}")
     
     mode = st.session_state.get('mode', 'Beginner')
     
@@ -216,9 +216,9 @@ def render_feature_engineering_page():
     original_features = X_train.shape[1]
     
     if mode == "Beginner":
-        st.markdown("### 🎓 Beginner Mode - Automatic Feature Selection")
+        st.markdown("### Beginner Mode - Automatic Feature Selection")
         
-        if st.button("🚀 Apply Automatic Feature Selection", type="primary", use_container_width=True):
+        if st.button("Apply Automatic Feature Selection", type="primary", use_container_width=True):
             with st.spinner("Selecting features..."):
                 progress = st.progress(0)
                 
@@ -263,7 +263,7 @@ def render_feature_engineering_page():
                 st.session_state['feature_engineering_done'] = True
                 
                 # Display results
-                st.success("✅ Feature selection complete!")
+                st.success("Feature selection complete!")
                 
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -278,7 +278,7 @@ def render_feature_engineering_page():
                         st.write(removed_features)
                 
                 # Feature importance chart
-                st.markdown("#### 📊 Feature Importance (Top 20)")
+                st.markdown("#### Feature Importance (Top 20)")
                 fig = px.bar(
                     importances.head(20),
                     x='Importance',
@@ -290,7 +290,7 @@ def render_feature_engineering_page():
                 st.plotly_chart(fig, use_container_width=True)
     
     else:  # Expert mode
-        st.markdown("### 🔬 Expert Mode - Custom Feature Selection")
+        st.markdown("### Expert Mode - Custom Feature Selection")
         
         # Options
         col1, col2 = st.columns(2)
@@ -324,7 +324,7 @@ def render_feature_engineering_page():
         elif selection_method == "PCA":
             variance_ratio = st.slider("Explained variance ratio to keep", 0.8, 0.99, 0.95, 0.01)
         
-        if st.button("🚀 Apply Feature Engineering", type="primary", use_container_width=True):
+        if st.button("Apply Feature Engineering", type="primary", use_container_width=True):
             with st.spinner("Engineering features..."):
                 X_train_fe = X_train.copy()
                 X_test_fe = X_test.copy()
@@ -379,7 +379,7 @@ def render_feature_engineering_page():
                 st.session_state['X_test'] = X_test_fe
                 st.session_state['feature_engineering_done'] = True
                 
-                st.success("✅ Feature engineering complete!")
+                st.success("Feature engineering complete!")
                 
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -393,12 +393,21 @@ def render_feature_engineering_page():
     if 'feature_importances' in st.session_state and st.session_state.get('feature_engineering_done', False):
         importances = st.session_state['feature_importances']
         
-        with st.expander("📊 All Feature Importances", expanded=False):
+        with st.expander("All Feature Importances", expanded=False):
             st.dataframe(importances, use_container_width=True, hide_index=True)
     
     # Skip button
     if not st.session_state.get('feature_engineering_done', False):
         st.markdown("---")
-        if st.button("⏭️ Skip Feature Engineering", use_container_width=True):
+        if st.button("Skip Feature Engineering", use_container_width=True):
             st.session_state['feature_engineering_done'] = True
             st.success("Feature engineering skipped. Proceed to Model Training.")
+    
+    # Continue button
+    if st.session_state.get('feature_engineering_done', False):
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("Continue to Model Training", type="primary", use_container_width=True):
+                st.session_state['current_page'] = 'training'
+                st.rerun()
