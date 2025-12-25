@@ -26,21 +26,30 @@ def remove_low_variance_features(X, threshold=0.01):
     """
     selector = VarianceThreshold(threshold=threshold)
     
-    if isinstance(X, pd.DataFrame):
-        feature_names = X.columns.tolist()
-        X_filtered = selector.fit_transform(X)
+    try:
+        if isinstance(X, pd.DataFrame):
+            feature_names = X.columns.tolist()
+            X_filtered = selector.fit_transform(X)
+            
+            mask = selector.get_support()
+            kept_features = [f for f, m in zip(feature_names, mask) if m]
+            removed_features = [f for f, m in zip(feature_names, mask) if not m]
+            
+            X_filtered = pd.DataFrame(X_filtered, columns=kept_features, index=X.index)
+        else:
+            X_filtered = selector.fit_transform(X)
+            removed_features = []
+            kept_features = list(range(X_filtered.shape[1]))
         
-        mask = selector.get_support()
-        kept_features = [f for f, m in zip(feature_names, mask) if m]
-        removed_features = [f for f, m in zip(feature_names, mask) if not m]
-        
-        X_filtered = pd.DataFrame(X_filtered, columns=kept_features, index=X.index)
-    else:
-        X_filtered = selector.fit_transform(X)
-        removed_features = []
-        kept_features = list(range(X_filtered.shape[1]))
+        return X_filtered, removed_features, selector
     
-    return X_filtered, removed_features, selector
+    except ValueError as e:
+        # Handle case where all features have low variance (common with text-vectorized data)
+        if "No feature in X meets the variance threshold" in str(e):
+            # Keep all features - variance filtering not suitable for this data
+            return X, [], None
+        else:
+            raise
 
 
 def remove_correlated_features(X, threshold=0.95, target=None):
@@ -232,6 +241,10 @@ def render_feature_engineering_page():
                 if removed_low_var:
                     X_test_fe = X_test_fe.drop(columns=[c for c in removed_low_var if c in X_test_fe.columns], errors='ignore')
                     removed_features.extend(removed_low_var)
+                elif removed_low_var is not None and len(removed_low_var) == 0 and isinstance(X_train_fe, pd.DataFrame):
+                    # Check if this is text-vectorized data (TF-IDF features)
+                    if any(col.startswith('tfidf_') or '_tfidf_' in col for col in X_train_fe.columns[:5]):
+                        st.info("ℹ️ All features retained. Variance-based filtering is not suitable for text-vectorized (TF-IDF) features, as they naturally have sparse, low-variance distributions.")
                 
                 # Step 2: Remove highly correlated
                 progress.progress(50)

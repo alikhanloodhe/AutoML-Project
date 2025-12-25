@@ -11,6 +11,7 @@ from sklearn.impute import SimpleImputer, KNNImputer
 from modules.text_processor import (
     preprocess_text_column, vectorize_text_tfidf, vectorize_text_count
 )
+from modules.utils import detect_identifier_columns
 
 # Try to import SMOTE, but make it optional
 try:
@@ -519,50 +520,75 @@ def render_preprocessing_page():
                     pipeline.add_step("Target Encoding", "Label Encoding", {}, target_col)
                     st.success(f"Target variable '{target_col}' label encoded.")
                 progress.progress(5)
-                                # Step 0.5: Drop columns with >50% missing values or marked for dropping
-                cols_to_drop = []
-                issue_resolutions = st.session_state.get('issue_resolutions', {})
                 
-                # Check for columns marked to drop in issue resolution
+                # ═══════════════════════════════════════════════════════════
+                # Step 0.5: EARLY-STAGE COLUMN REMOVAL (Before any processing)
+                # ═══════════════════════════════════════════════════════════
+                status.text("Step 0.5/7: Detecting and removing identifier columns...")
+                
+                cols_to_drop = []
+                drop_reasons = {}
+                
+                # 1. Detect identifier columns (user_id, name, email, etc.)
+                identifier_detection = detect_identifier_columns(
+                    df_processed, 
+                    target_col=target_col,
+                    text_columns=column_types.get('text', [])
+                )
+                
+                identifier_cols = identifier_detection['identifier_cols']
+                if identifier_cols:
+                    for col in identifier_cols:
+                        cols_to_drop.append(col)
+                        drop_reasons[col] = f"IDENTIFIER ({identifier_detection['metadata'][col]['details']})"
+                    st.info(f"🔍 Detected {len(identifier_cols)} identifier columns: {', '.join(identifier_cols)}")
+                
+                # 2. Check for user-marked columns (from issue resolution)
+                issue_resolutions = st.session_state.get('issue_resolutions', {})
                 for issue_id, action in issue_resolutions.items():
                     if action.startswith('drop_'):
                         col_name = action.replace('drop_', '')
-                        if col_name in df_processed.columns and col_name != target_col:
+                        if col_name in df_processed.columns and col_name != target_col and col_name not in cols_to_drop:
                             cols_to_drop.append(col_name)
+                            drop_reasons[col_name] = "User-selected in issue resolution"
                 
-                # Also check for >50% missing values
+                # 3. Check for >50% missing values
                 for col in df_processed.columns:
                     if col != target_col and col not in cols_to_drop:
                         missing_pct = df_processed[col].isnull().sum() / len(df_processed) * 100
                         if missing_pct > 50:
                             cols_to_drop.append(col)
+                            drop_reasons[col] = f">50% missing ({missing_pct:.1f}%)"
                 
+                # Execute dropping
                 if cols_to_drop:
                     df_processed = df_processed.drop(columns=cols_to_drop)
+                    
                     # Update column types after dropping
                     for col in cols_to_drop:
                         for col_type in column_types:
                             if col in column_types[col_type]:
                                 column_types[col_type].remove(col)
-                    pipeline.add_step("Drop Columns", "User-selected or >50% missing", {}, ', '.join(cols_to_drop))
-                    st.info(f"✅ Dropped {len(cols_to_drop)} columns: {', '.join(cols_to_drop)}")
-                                # Step 0.5: Drop columns with >50% missing values FIRST
-                cols_to_drop = []
-                for col in df_processed.columns:
-                    if col != target_col:
-                        missing_pct = df_processed[col].isnull().sum() / len(df_processed) * 100
-                        if missing_pct > 50:
-                            cols_to_drop.append(col)
+                    
+                    # Store metadata for reproducibility
+                    st.session_state['dropped_columns_metadata'] = {
+                        'columns': cols_to_drop,
+                        'reasons': drop_reasons,
+                        'timestamp': pd.Timestamp.now().isoformat()
+                    }
+                    
+                    # Add to pipeline
+                    pipeline.add_step("Remove Identifier & Bad Columns", 
+                                    "Identifiers, user-selected, >50% missing", 
+                                    {}, ', '.join(cols_to_drop))
+                    
+                    # Display summary
+                    st.success(f"✅ Removed {len(cols_to_drop)} columns")
+                    with st.expander("View dropped columns details"):
+                        for col in cols_to_drop:
+                            st.write(f"• **{col}**: {drop_reasons[col]}")
                 
-                if cols_to_drop:
-                    df_processed = df_processed.drop(columns=cols_to_drop)
-                    # Update column types after dropping
-                    for col in cols_to_drop:
-                        for col_type in column_types:
-                            if col in column_types[col_type]:
-                                column_types[col_type].remove(col)
-                    pipeline.add_step("Drop High Missing Columns", "Removed (>50% missing)", {}, ', '.join(cols_to_drop))
-                    st.info(f"Dropped {len(cols_to_drop)} columns with >50% missing values: {', '.join(cols_to_drop)}")
+                progress.progress(8)
                 
                 # Step 1: Handle text columns if present
                 text_vectorizers = {}
@@ -762,46 +788,91 @@ def render_preprocessing_page():
             with st.spinner("Preprocessing data..."):
                 progress = st.progress(0)
                 
-                # Step 0: Text preprocessing
+                # ═══════════════════════════════════════════════════════════
+                # Step 0: EARLY-STAGE IDENTIFIER DETECTION & REMOVAL
+                # ═══════════════════════════════════════════════════════════
+                
+                df_processed = df.copy()
+                cols_to_drop = []
+                drop_reasons = {}
+                
+                # Detect identifier columns
+                identifier_detection = detect_identifier_columns(
+                    df_processed,
+                    target_col=target_col,
+                    text_columns=column_types.get('text', [])
+                )
+                
+                identifier_cols = identifier_detection['identifier_cols']
+                if identifier_cols:
+                    for col in identifier_cols:
+                        cols_to_drop.append(col)
+                        drop_reasons[col] = f"IDENTIFIER ({identifier_detection['metadata'][col]['details']})"
+                    st.info(f"🔍 Detected {len(identifier_cols)} identifier columns: {', '.join(identifier_cols)}")
+                
+                # Execute dropping
+                if cols_to_drop:
+                    df_processed = df_processed.drop(columns=cols_to_drop)
+                    
+                    # Update column types
+                    for col in cols_to_drop:
+                        for col_type in column_types:
+                            if col in column_types[col_type]:
+                                column_types[col_type].remove(col)
+                    
+                    # Store metadata
+                    st.session_state['dropped_columns_metadata'] = {
+                        'columns': cols_to_drop,
+                        'reasons': drop_reasons,
+                        'timestamp': pd.Timestamp.now().isoformat()
+                    }
+                    
+                    pipeline.add_step("Remove Identifier Columns", 
+                                    "Conservative detection", 
+                                    {}, ', '.join(cols_to_drop))
+                    
+                    st.success(f"✅ Removed {len(identifier_cols)} identifier columns")
+                
+                progress.progress(5)
+                
+                # Step 1: Text preprocessing
                 text_vectorizers = {}
                 if column_types.get('text', []):
                     df_processed, text_vectorizers, column_types = preprocess_text_features(
-                        df, column_types, target_col, method=text_method, 
+                        df_processed, column_types, target_col, method=text_method, 
                         max_features=text_max_features,
                         remove_stopwords_flag=text_remove_stopwords
                     )
                     pipeline.add_step("Text Preprocessing", f"{text_method.upper()} Vectorization", 
                                     {"max_features": text_max_features}, column_types.get('text', []))
-                else:
-                    df_processed = df.copy()
-                progress.progress(15)
+                progress.progress(20)
                 
-                # Step 1: Impute
+                # Step 2: Impute
                 df_processed = impute_missing_values(df_processed, column_types, strategy_num, strategy_cat)
                 pipeline.add_step("Missing Value Imputation", f"{strategy_num} (num) / {strategy_cat} (cat)", {}, "All columns")
-                progress.progress(30)
+                progress.progress(35)
                 
-                # Step 2: Outliers
+                # Step 3: Outliers
                 df_processed = handle_outliers(df_processed, column_types, outlier_method, lower_pct, upper_pct)
                 pipeline.add_step("Outlier Handling", outlier_method, {"lower": lower_pct, "upper": upper_pct}, column_types.get('numerical', []))
-                progress.progress(45)
+                progress.progress(50)
                 
-                # Step 3: Encode
+                # Step 4: Encode
                 df_processed, encoders, dropped_cols = encode_categorical(df_processed, column_types, encoding_method, target_col)
                 cat_cols_encoded = [col for col in column_types.get('categorical', []) if col != target_col and col not in dropped_cols]
                 if dropped_cols:
                     pipeline.add_step("Drop High Cardinality Columns", "Removed identifiers", {}, ', '.join(dropped_cols))
                 pipeline.add_step("Categorical Encoding", encoding_method, {}, ', '.join(cat_cols_encoded) if cat_cols_encoded else 'None')
-                progress.progress(60)
+                progress.progress(65)
                 
-                # Step 4: Scale
+                # Step 5: Scale
                 df_processed, scaler = scale_features(df_processed, detect_column_types(df_processed), scaling_method, target_col)
                 pipeline.add_step("Feature Scaling", scaling_method, {}, "Numerical columns")
-                progress.progress(75)
+                progress.progress(80)
                 
-                # Step 5: Split
+                # Step 6: Split
                 X_train, X_test, y_train, y_test = split_data(df_processed, target_col, test_size, stratify, random_state)
-                progress.progress(85)
+                progress.progress(90)
                 
                 # Step 5b: Vectorize text if present
                 if text_vectorizers:

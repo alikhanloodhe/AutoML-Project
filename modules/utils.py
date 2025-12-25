@@ -176,6 +176,157 @@ def detect_column_types(df):
     return column_types
 
 
+def detect_identifier_columns(df, target_col=None, text_columns=None):
+    """
+    Conservative identifier column detection using multi-rule agreement.
+    
+    STRATEGY:
+    Identifiers (user_id, name, email, order_id) must be detected and removed because:
+    - They carry ZERO predictive signal
+    - They cause overfitting (model memorizes IDs)
+    - They create feature explosion in encoding
+    
+    CONSERVATIVE APPROACH:
+    - ALL mandatory rules must pass to classify as identifier
+    - Protected columns are NEVER dropped
+    - When uncertain, KEEP the column (safe default)
+    
+    Args:
+        df: DataFrame to analyze
+        target_col: Name of target column (protected from dropping)
+        text_columns: List of semantic text columns (protected from dropping)
+    
+    Returns:
+        dict with:
+            'identifier_cols': List of detected identifier column names
+            'metadata': Dict mapping column -> reason for detection
+            'protected_cols': List of columns protected from dropping
+    """
+    text_columns = text_columns or []
+    identifier_cols = []
+    metadata = {}
+    protected_cols = []
+    
+    # Protect target column
+    if target_col:
+        protected_cols.append(target_col)
+    
+    # Protect semantic text columns
+    protected_cols.extend(text_columns)
+    
+    for col in df.columns:
+        # SAFETY CHECK 1: Never drop target or text columns
+        if col in protected_cols:
+            continue
+        
+        # SAFETY CHECK 2: Only analyze non-numeric columns
+        # Numeric columns are features, not identifiers
+        if pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        
+        # Get non-null values as strings
+        non_null = df[col].dropna().astype(str)
+        if len(non_null) == 0:
+            continue
+        
+        # ═══════════════════════════════════════════════════════════
+        # COMPUTE LIGHTWEIGHT HEURISTICS (Single Pass)
+        # ═══════════════════════════════════════════════════════════
+        
+        n_rows = len(df)
+        n_unique = df[col].nunique()
+        unique_ratio = n_unique / n_rows
+        
+        # Maximum frequency (most common value count)
+        value_counts = df[col].value_counts()
+        max_frequency = value_counts.iloc[0] if len(value_counts) > 0 else 0
+        max_freq_ratio = max_frequency / n_rows
+        
+        # Sample for efficiency
+        sample_size = min(1000, len(non_null))
+        sample = non_null.sample(sample_size, random_state=42) if len(non_null) > sample_size else non_null
+        
+        # Character length statistics
+        char_lengths = sample.str.len()
+        avg_char_length = char_lengths.mean()
+        
+        # Token count (space-separated words)
+        token_counts = sample.str.split().str.len()
+        avg_token_count = token_counts.mean()
+        
+        # Check if values are numeric-only (e.g., "12345", "98765")
+        is_numeric_only = sample.str.match(r'^\d+$').sum() / len(sample) > 0.8
+        
+        # ═══════════════════════════════════════════════════════════
+        # PROTECTION RULES (Explicit Never-Drop Conditions)
+        # ═══════════════════════════════════════════════════════════
+        
+        # PROTECTED 1: Semantic text (multiple words)
+        if avg_token_count >= 3:
+            continue
+        
+        # PROTECTED 2: Long content (reviews, descriptions)
+        if avg_char_length >= 50:
+            continue
+        
+        # PROTECTED 3: Low uniqueness (categorical features)
+        if unique_ratio < 0.7:
+            continue
+        
+        # ═══════════════════════════════════════════════════════════
+        # MANDATORY IDENTIFIER RULES (All Must Pass)
+        # ═══════════════════════════════════════════════════════════
+        
+        # MANDATORY RULE 1: Near-Uniqueness
+        # Rationale: Identifiers are nearly unique (each row has different ID)
+        # Threshold: ≥90% unique
+        rule1_near_unique = unique_ratio >= 0.90
+        
+        # MANDATORY RULE 2: Low Repetition
+        # Rationale: No single value dominates (unlike categories)
+        # Threshold: Most common value appears in ≤2% of rows
+        rule2_low_repetition = max_freq_ratio <= 0.02
+        
+        # MANDATORY RULE 3: Non-Semantic Content (At least one must be true)
+        # Rationale: Identifiers are either numeric codes or short labels
+        # Rule 3a: Numeric-only values (user_id="12345")
+        # Rule 3b: Short average length ≤30 chars (name="John Doe")
+        rule3a_numeric_only = is_numeric_only
+        rule3b_short_length = avg_char_length <= 30
+        rule3_non_semantic = rule3a_numeric_only or rule3b_short_length
+        
+        # ═══════════════════════════════════════════════════════════
+        # FINAL DECISION: ALL MANDATORY RULES MUST PASS
+        # ═══════════════════════════════════════════════════════════
+        
+        if rule1_near_unique and rule2_low_repetition and rule3_non_semantic:
+            identifier_cols.append(col)
+            
+            # Record metadata for explainability
+            reasons = []
+            reasons.append(f"unique_ratio={unique_ratio:.2%}")
+            reasons.append(f"max_freq_ratio={max_freq_ratio:.2%}")
+            if rule3a_numeric_only:
+                reasons.append(f"numeric_only=True")
+            if rule3b_short_length:
+                reasons.append(f"avg_char_length={avg_char_length:.1f}")
+            
+            metadata[col] = {
+                'reason': 'IDENTIFIER',
+                'details': ', '.join(reasons),
+                'unique_ratio': round(unique_ratio, 4),
+                'max_freq_ratio': round(max_freq_ratio, 4),
+                'avg_char_length': round(avg_char_length, 2),
+                'avg_token_count': round(avg_token_count, 2)
+            }
+    
+    return {
+        'identifier_cols': identifier_cols,
+        'metadata': metadata,
+        'protected_cols': protected_cols
+    }
+
+
 def calculate_skewness_kurtosis(series):
     """Calculate skewness and kurtosis for a numerical series."""
     try:
