@@ -32,7 +32,7 @@ def format_bytes(size_bytes):
 
 def detect_column_types(df):
     """
-    Detect and categorize column types.
+    Detect and categorize column types using smart heuristics.
     
     Returns:
         dict with 'numerical', 'categorical', 'datetime', 'boolean', 'text' keys
@@ -47,6 +47,10 @@ def detect_column_types(df):
     
     # Identifier keywords that suggest a column is an ID/name, not meaningful text
     identifier_keywords = ['id', 'name', 'key', 'code', 'index', 'identifier', 'uuid', 'guid']
+    
+    # Text-suggesting column names (common in datasets)
+    text_keywords = ['message', 'text', 'review', 'comment', 'description', 'body', 'content', 
+                     'tweet', 'post', 'email', 'subject', 'title', 'summary', 'note']
     
     for col in df.columns:
         if pd.api.types.is_bool_dtype(df[col]):
@@ -63,43 +67,83 @@ def detect_column_types(df):
             except:
                 # Distinguish between categorical, text, and identifiers
                 non_null = df[col].dropna().astype(str)
-                if len(non_null) > 0:
-                    avg_length = non_null.str.len().mean()
-                    unique_ratio = df[col].nunique() / len(df)
-                    n_unique = df[col].nunique()
-                    
-                    # Check if column name suggests it's an identifier
-                    col_lower = col.lower()
-                    is_likely_identifier = any(keyword in col_lower for keyword in identifier_keywords)
-                    
-                    # Very high unique ratio (>0.9) suggests identifiers/IDs, not meaningful text
-                    is_highly_unique = unique_ratio > 0.9
-                    
-                    # Heuristics for text detection:
-                    # 1. Skip identifiers (names, IDs, etc.) - treat as categorical to be dropped
-                    # 2. Average length > 50 characters suggests meaningful text (messages, descriptions)
-                    # 3. Moderate unique ratio (30-80%) with long strings suggests meaningful text
-                    # 4. Very low unique values (<20) is always categorical
-                    
-                    if is_likely_identifier or is_highly_unique:
-                        # This is likely an identifier (Name, ID, etc.) - treat as categorical
-                        # It will be excluded from preprocessing as it's not useful
-                        column_types['categorical'].append(col)
-                    elif avg_length > 50:
-                        # Long average text - likely meaningful text content
-                        column_types['text'].append(col)
-                    elif n_unique <= 20:
-                        # Few unique values - categorical
-                        column_types['categorical'].append(col)
-                    elif unique_ratio > 0.3 and unique_ratio < 0.8 and avg_length > 30:
-                        # Moderate unique ratio with decent length - could be meaningful text
-                        column_types['text'].append(col)
-                    elif unique_ratio < 0.3 and avg_length < 50:
-                        # Low unique ratio and short strings - categorical
-                        column_types['categorical'].append(col)
-                    else:
-                        # Default to categorical for safety
-                        column_types['categorical'].append(col)
+                if len(non_null) == 0:
+                    column_types['categorical'].append(col)
+                    continue
+                
+                # Calculate text statistics
+                avg_length = non_null.str.len().mean()
+                median_length = non_null.str.len().median()
+                max_length = non_null.str.len().max()
+                unique_ratio = df[col].nunique() / len(df)
+                n_unique = df[col].nunique()
+                
+                # Check column name for hints
+                col_lower = col.lower()
+                is_likely_identifier = any(keyword in col_lower for keyword in identifier_keywords)
+                suggests_text = any(keyword in col_lower for keyword in text_keywords)
+                
+                # Count words in sample entries (text usually has multiple words)
+                sample_size = min(100, len(non_null))
+                sample = non_null.sample(sample_size, random_state=42)
+                avg_word_count = sample.str.split().str.len().mean()
+                
+                # Check for spaces (text usually has spaces between words)
+                has_spaces_ratio = non_null.str.contains(' ', regex=False).sum() / len(non_null)
+                
+                # Text characteristics (multiple words + spaces indicates real text, not IDs)
+                has_text_characteristics = (avg_word_count > 2 and has_spaces_ratio > 0.5) or avg_length > 40
+                
+                # SMART TEXT DETECTION STRATEGY:
+                # Priority 1: Column name suggests text content
+                if suggests_text and avg_length > 20:
+                    column_types['text'].append(col)
+                
+                # Priority 2: Definite text - has multiple words and spaces (even if highly unique)
+                elif has_text_characteristics and avg_word_count > 3:
+                    column_types['text'].append(col)
+                
+                # Priority 3: Identifier detection (only if NO text characteristics)
+                elif is_likely_identifier and not has_text_characteristics:
+                    column_types['categorical'].append(col)
+                
+                # Priority 3: Identifier detection (only if NO text characteristics)
+                elif is_likely_identifier and not has_text_characteristics:
+                    column_types['categorical'].append(col)
+                
+                # Priority 4: High unique ratio (>90%) with short strings = likely IDs
+                elif unique_ratio > 0.9 and avg_length < 30 and avg_word_count < 2:
+                    column_types['categorical'].append(col)
+                
+                # Priority 5: Long text with multiple words (messages, reviews, etc.)
+                elif avg_length > 40 and avg_word_count > 3:
+                    column_types['text'].append(col)
+                
+                # Priority 6: Moderate length text with spaces (sentences)
+                elif avg_length > 25 and has_spaces_ratio > 0.7:
+                    column_types['text'].append(col)
+                
+                # Priority 7: High unique ratio with reasonable length + text features (unique text content)
+                elif unique_ratio > 0.5 and avg_length > 30 and avg_word_count > 2:
+                    column_types['text'].append(col)
+                
+                # Priority 7: High unique ratio with reasonable length + text features (unique text content)
+                elif unique_ratio > 0.5 and avg_length > 30 and avg_word_count > 2:
+                    column_types['text'].append(col)
+                
+                # Priority 8: Very few unique values = categorical
+                elif n_unique <= 20:
+                    column_types['categorical'].append(col)
+                
+                # Priority 9: Short strings with low unique ratio = categorical
+                elif avg_length < 25 and unique_ratio < 0.5:
+                    column_types['categorical'].append(col)
+                
+                # Priority 10: If unclear but has moderate length and spaces, lean towards text
+                elif avg_length > 20 and has_spaces_ratio > 0.5 and avg_word_count > 2:
+                    column_types['text'].append(col)
+                
+                # Final fallback: categorical
                 else:
                     column_types['categorical'].append(col)
     

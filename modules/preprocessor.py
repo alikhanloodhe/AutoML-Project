@@ -417,25 +417,42 @@ def vectorize_text_for_split(X_train, X_test, text_vectorizers):
         if cleaned_col not in X_train_copy.columns:
             continue
         
-        # Vectorize
-        if method == 'tfidf':
-            train_vectors, test_vectors, vectorizer, feature_names = vectorize_text_tfidf(
-                X_train_copy[cleaned_col],
-                X_test_copy[cleaned_col],
-                max_features=max_features,
-                ngram_range=(1, 2),
-                min_df=2,
-                max_df=0.95
-            )
-        else:  # count
-            train_vectors, test_vectors, vectorizer, feature_names = vectorize_text_count(
-                X_train_copy[cleaned_col],
-                X_test_copy[cleaned_col],
-                max_features=max_features,
-                ngram_range=(1, 2),
-                min_df=2,
-                max_df=0.95
-            )
+        # Check if column has sufficient non-empty text
+        train_non_empty = X_train_copy[cleaned_col].fillna('').str.strip().astype(bool).sum()
+        if train_non_empty < 5:  # Skip if less than 5 non-empty entries
+            st.warning(f"Skipping '{original_col}' - insufficient text data ({train_non_empty} entries)")
+            X_train_copy = X_train_copy.drop(columns=[cleaned_col], errors='ignore')
+            X_test_copy = X_test_copy.drop(columns=[cleaned_col], errors='ignore')
+            continue
+        
+        # Adjust min_df based on data size (more lenient for small datasets)
+        adaptive_min_df = max(1, min(2, train_non_empty // 100))
+        
+        try:
+            # Vectorize with adaptive parameters
+            if method == 'tfidf':
+                train_vectors, test_vectors, vectorizer, feature_names = vectorize_text_tfidf(
+                    X_train_copy[cleaned_col],
+                    X_test_copy[cleaned_col],
+                    max_features=max_features,
+                    ngram_range=(1, 2),
+                    min_df=adaptive_min_df,
+                    max_df=0.95
+                )
+            else:  # count
+                train_vectors, test_vectors, vectorizer, feature_names = vectorize_text_count(
+                    X_train_copy[cleaned_col],
+                    X_test_copy[cleaned_col],
+                    max_features=max_features,
+                    ngram_range=(1, 2),
+                    min_df=adaptive_min_df,
+                    max_df=0.95
+                )
+        except ValueError as e:
+            st.warning(f"Could not vectorize '{original_col}': {str(e)}. Skipping this column.")
+            X_train_copy = X_train_copy.drop(columns=[cleaned_col], errors='ignore')
+            X_test_copy = X_test_copy.drop(columns=[cleaned_col], errors='ignore')
+            continue
         
         # Add vector columns with prefix
         for feat in feature_names:
@@ -502,6 +519,50 @@ def render_preprocessing_page():
                     pipeline.add_step("Target Encoding", "Label Encoding", {}, target_col)
                     st.success(f"Target variable '{target_col}' label encoded.")
                 progress.progress(5)
+                                # Step 0.5: Drop columns with >50% missing values or marked for dropping
+                cols_to_drop = []
+                issue_resolutions = st.session_state.get('issue_resolutions', {})
+                
+                # Check for columns marked to drop in issue resolution
+                for issue_id, action in issue_resolutions.items():
+                    if action.startswith('drop_'):
+                        col_name = action.replace('drop_', '')
+                        if col_name in df_processed.columns and col_name != target_col:
+                            cols_to_drop.append(col_name)
+                
+                # Also check for >50% missing values
+                for col in df_processed.columns:
+                    if col != target_col and col not in cols_to_drop:
+                        missing_pct = df_processed[col].isnull().sum() / len(df_processed) * 100
+                        if missing_pct > 50:
+                            cols_to_drop.append(col)
+                
+                if cols_to_drop:
+                    df_processed = df_processed.drop(columns=cols_to_drop)
+                    # Update column types after dropping
+                    for col in cols_to_drop:
+                        for col_type in column_types:
+                            if col in column_types[col_type]:
+                                column_types[col_type].remove(col)
+                    pipeline.add_step("Drop Columns", "User-selected or >50% missing", {}, ', '.join(cols_to_drop))
+                    st.info(f"✅ Dropped {len(cols_to_drop)} columns: {', '.join(cols_to_drop)}")
+                                # Step 0.5: Drop columns with >50% missing values FIRST
+                cols_to_drop = []
+                for col in df_processed.columns:
+                    if col != target_col:
+                        missing_pct = df_processed[col].isnull().sum() / len(df_processed) * 100
+                        if missing_pct > 50:
+                            cols_to_drop.append(col)
+                
+                if cols_to_drop:
+                    df_processed = df_processed.drop(columns=cols_to_drop)
+                    # Update column types after dropping
+                    for col in cols_to_drop:
+                        for col_type in column_types:
+                            if col in column_types[col_type]:
+                                column_types[col_type].remove(col)
+                    pipeline.add_step("Drop High Missing Columns", "Removed (>50% missing)", {}, ', '.join(cols_to_drop))
+                    st.info(f"Dropped {len(cols_to_drop)} columns with >50% missing values: {', '.join(cols_to_drop)}")
                 
                 # Step 1: Handle text columns if present
                 text_vectorizers = {}
