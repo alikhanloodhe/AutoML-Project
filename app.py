@@ -509,7 +509,7 @@ def render_home_page():
         """, unsafe_allow_html=True)
         
         st.markdown("<div style='margin-bottom: 16px;'></div>", unsafe_allow_html=True)
-        if st.button("Select Beginner Mode", key="beginner_btn", use_container_width=True):
+        if st.button("Select Beginner Mode", key="beginner_btn", use_container_width=True, type="primary" if current_mode == "Beginner" else "secondary"):
             st.session_state['mode'] = 'Beginner'
             st.rerun()
     
@@ -529,7 +529,7 @@ def render_home_page():
         """, unsafe_allow_html=True)
         
         st.markdown("<div style='margin-bottom: 16px;'></div>", unsafe_allow_html=True)
-        if st.button("Select Expert Mode", key="expert_btn", use_container_width=True):
+        if st.button("Select Expert Mode", key="expert_btn", use_container_width=True, type="primary" if current_mode == "Expert" else "secondary"):
             st.session_state['mode'] = 'Expert'
             st.rerun()
     
@@ -759,6 +759,10 @@ def main():
     elif page_key == "eda":
         st.markdown('<div class="step-indicator"><div class="step-number">2</div>Exploratory Data Analysis</div>', unsafe_allow_html=True)
         if st.session_state.get('data') is not None:
+            # Scroll to top if coming from another page
+            if st.session_state.get('scroll_to_top', False):
+                st.markdown('<script>window.scrollTo(0, 0);</script>', unsafe_allow_html=True)
+                st.session_state['scroll_to_top'] = False
             render_eda_page()
         else:
             st.warning("Please upload a dataset first!")

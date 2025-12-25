@@ -13,8 +13,15 @@ from plotly.subplots import make_subplots
 from scipy import stats
 from modules.utils import (
     detect_column_types, calculate_skewness_kurtosis,
-    close_figure, get_color_palette
+    close_figure, get_color_palette, get_text_summary
 )
+
+# Try to import wordcloud
+try:
+    from wordcloud import WordCloud
+    WORDCLOUD_AVAILABLE = True
+except ImportError:
+    WORDCLOUD_AVAILABLE = False
 
 
 def analyze_missing_values(df):
@@ -412,6 +419,110 @@ def analyze_multivariate(df, column_types, target_col=None):
             st.dataframe(grouped_stats.round(3), use_container_width=True)
 
 
+def analyze_text_data(df, column_types):
+    """Analyze and visualize text data columns."""
+    st.subheader("Text Data Analysis")
+    
+    text_cols = column_types.get('text', [])
+    
+    if not text_cols:
+        st.info("No text columns detected in the dataset.")
+        return
+    
+    st.markdown(f"**Text Columns Detected:** {len(text_cols)}")
+    
+    for col in text_cols:
+        with st.expander(f"📝 {col}", expanded=True):
+            # Get text statistics
+            text_summary = get_text_summary(df, col)
+            
+            if text_summary:
+                # Display statistics
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Total Documents", f"{text_summary['count']:,}")
+                with col2:
+                    st.metric("Unique Values", f"{text_summary['unique']:,}")
+                with col3:
+                    st.metric("Avg Length (chars)", f"{text_summary['avg_length']:.0f}")
+                with col4:
+                    st.metric("Avg Words", f"{text_summary['avg_words']:.1f}")
+                
+                col5, col6, col7 = st.columns(3)
+                with col5:
+                    st.metric("Min Length", f"{text_summary['min_length']}")
+                with col6:
+                    st.metric("Max Length", f"{text_summary['max_length']}")
+                with col7:
+                    st.metric("Missing", f"{text_summary['missing']:,} ({text_summary['missing_pct']:.1f}%)")
+                
+                # Text length distribution
+                st.markdown("##### Text Length Distribution")
+                text_series = df[col].dropna().astype(str)
+                lengths = text_series.str.len()
+                
+                fig = px.histogram(
+                    x=lengths,
+                    nbins=50,
+                    title=f'Character Length Distribution - {col}',
+                    labels={'x': 'Character Count', 'y': 'Frequency'}
+                )
+                fig.update_layout(
+                    showlegend=False,
+                    height=300,
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Word cloud
+                if WORDCLOUD_AVAILABLE and len(text_series) > 0:
+                    st.markdown("##### Word Cloud")
+                    
+                    try:
+                        # Combine all text
+                        all_text = ' '.join(text_series.head(1000))  # Limit to first 1000 for performance
+                        
+                        if len(all_text.strip()) > 0:
+                            # Generate word cloud
+                            wordcloud = WordCloud(
+                                width=800,
+                                height=400,
+                                background_color='white',
+                                colormap='viridis',
+                                max_words=100,
+                                relative_scaling=0.5,
+                                min_font_size=10
+                            ).generate(all_text)
+                            
+                            # Display word cloud
+                            fig, ax = plt.subplots(figsize=(12, 6))
+                            ax.imshow(wordcloud, interpolation='bilinear')
+                            ax.axis('off')
+                            ax.set_title(f'Word Cloud - {col}', fontsize=14, pad=10)
+                            st.pyplot(fig)
+                            close_figure(fig)
+                        else:
+                            st.info("Not enough text data to generate word cloud.")
+                    
+                    except Exception as e:
+                        st.warning(f"Could not generate word cloud: {str(e)}")
+                else:
+                    if not WORDCLOUD_AVAILABLE:
+                        st.info("WordCloud library not available. Install it to see word clouds.")
+                
+                # Sample texts
+                st.markdown("##### Sample Texts")
+                sample_texts = text_series.head(5).tolist()
+                for i, text in enumerate(sample_texts, 1):
+                    # Truncate long texts
+                    display_text = text if len(text) <= 200 else text[:200] + "..."
+                    st.text(f"{i}. {display_text}")
+            
+            else:
+                st.warning(f"No valid text data found in column '{col}'")
+
+
 def render_eda_page():
     """Render the complete EDA page with improved UI."""
     st.header("Exploratory Data Analysis")
@@ -445,9 +556,14 @@ def render_eda_page():
                 <div style="font-size: 1.8rem; font-weight: 700; color: #667eea;">{}</div>
                 <div style="color: rgba(255,255,255,0.6); font-size: 0.85rem;">Categorical</div>
             </div>
+            <div>
+                <div style="font-size: 1.8rem; font-weight: 700; color: #667eea;">{}</div>
+                <div style="color: rgba(255,255,255,0.6); font-size: 0.85rem;">Text</div>
+            </div>
         </div>
     </div>
-    """.format(len(df), len(df.columns), len(column_types.get('numerical', [])), len(column_types.get('categorical', []))), 
+    """.format(len(df), len(df.columns), len(column_types.get('numerical', [])), 
+               len(column_types.get('categorical', [])), len(column_types.get('text', []))), 
     unsafe_allow_html=True)
     
     # Progress tracking
@@ -481,6 +597,14 @@ def render_eda_page():
     analyze_distributions(df, column_types)
     
     st.markdown('<div style="height:1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); margin: 32px 0;"></div>', unsafe_allow_html=True)
+    
+    # Analyze text data if present
+    if column_types.get('text', []):
+        status_text.text("Analyzing text data...")
+        progress_bar.progress(85)
+        analyze_text_data(df, column_types)
+        
+        st.markdown('<div style="height:1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); margin: 32px 0;"></div>', unsafe_allow_html=True)
     
     status_text.text("Performing multivariate analysis...")
     progress_bar.progress(90)

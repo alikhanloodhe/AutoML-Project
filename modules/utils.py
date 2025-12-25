@@ -35,14 +35,18 @@ def detect_column_types(df):
     Detect and categorize column types.
     
     Returns:
-        dict with 'numerical', 'categorical', 'datetime', 'boolean' keys
+        dict with 'numerical', 'categorical', 'datetime', 'boolean', 'text' keys
     """
     column_types = {
         'numerical': [],
         'categorical': [],
         'datetime': [],
-        'boolean': []
+        'boolean': [],
+        'text': []
     }
+    
+    # Identifier keywords that suggest a column is an ID/name, not meaningful text
+    identifier_keywords = ['id', 'name', 'key', 'code', 'index', 'identifier', 'uuid', 'guid']
     
     for col in df.columns:
         if pd.api.types.is_bool_dtype(df[col]):
@@ -57,7 +61,47 @@ def detect_column_types(df):
                 pd.to_datetime(df[col], errors='raise')
                 column_types['datetime'].append(col)
             except:
-                column_types['categorical'].append(col)
+                # Distinguish between categorical, text, and identifiers
+                non_null = df[col].dropna().astype(str)
+                if len(non_null) > 0:
+                    avg_length = non_null.str.len().mean()
+                    unique_ratio = df[col].nunique() / len(df)
+                    n_unique = df[col].nunique()
+                    
+                    # Check if column name suggests it's an identifier
+                    col_lower = col.lower()
+                    is_likely_identifier = any(keyword in col_lower for keyword in identifier_keywords)
+                    
+                    # Very high unique ratio (>0.9) suggests identifiers/IDs, not meaningful text
+                    is_highly_unique = unique_ratio > 0.9
+                    
+                    # Heuristics for text detection:
+                    # 1. Skip identifiers (names, IDs, etc.) - treat as categorical to be dropped
+                    # 2. Average length > 50 characters suggests meaningful text (messages, descriptions)
+                    # 3. Moderate unique ratio (30-80%) with long strings suggests meaningful text
+                    # 4. Very low unique values (<20) is always categorical
+                    
+                    if is_likely_identifier or is_highly_unique:
+                        # This is likely an identifier (Name, ID, etc.) - treat as categorical
+                        # It will be excluded from preprocessing as it's not useful
+                        column_types['categorical'].append(col)
+                    elif avg_length > 50:
+                        # Long average text - likely meaningful text content
+                        column_types['text'].append(col)
+                    elif n_unique <= 20:
+                        # Few unique values - categorical
+                        column_types['categorical'].append(col)
+                    elif unique_ratio > 0.3 and unique_ratio < 0.8 and avg_length > 30:
+                        # Moderate unique ratio with decent length - could be meaningful text
+                        column_types['text'].append(col)
+                    elif unique_ratio < 0.3 and avg_length < 50:
+                        # Low unique ratio and short strings - categorical
+                        column_types['categorical'].append(col)
+                    else:
+                        # Default to categorical for safety
+                        column_types['categorical'].append(col)
+                else:
+                    column_types['categorical'].append(col)
     
     return column_types
 
@@ -120,6 +164,31 @@ def get_categorical_summary(df, column):
     return summary
 
 
+def get_text_summary(df, column):
+    """Get summary statistics for a text column."""
+    series = df[column].dropna().astype(str)
+    
+    if len(series) == 0:
+        return None
+    
+    word_counts = series.str.split().str.len()
+    char_counts = series.str.len()
+    
+    summary = {
+        'count': int(df[column].count()),
+        'unique': int(df[column].nunique()),
+        'missing': int(df[column].isna().sum()),
+        'missing_pct': round(df[column].isna().mean() * 100, 2),
+        'avg_length': round(char_counts.mean(), 2),
+        'min_length': int(char_counts.min()),
+        'max_length': int(char_counts.max()),
+        'avg_words': round(word_counts.mean(), 2),
+        'total_chars': int(char_counts.sum())
+    }
+    
+    return summary
+
+
 def save_figure_to_bytes(fig):
     """Save a matplotlib figure to bytes for PDF/report generation."""
     buf = io.BytesIO()
@@ -158,22 +227,34 @@ def get_class_distribution(series):
     return dist_df
 
 
-def is_imbalanced(series, threshold=0.1):
+def is_imbalanced(series, threshold=0.2):
     """
     Check if classes are imbalanced.
     
     Args:
         series: Target variable series
-        threshold: Minimum fraction for any class (default 10%)
+        threshold: Minimum fraction for any class (default 20%)
     
     Returns:
-        Tuple of (is_imbalanced, minority_class, minority_pct)
+        Tuple of (is_imbalanced, minority_class, minority_pct, severity)
+        severity: 'severe' (<10%), 'moderate' (10-20%), 'balanced' (>20%)
     """
     percentages = series.value_counts(normalize=True)
     min_pct = percentages.min()
     minority_class = percentages.idxmin()
+    min_pct_value = min_pct * 100
     
-    return min_pct < threshold, minority_class, min_pct * 100
+    # Determine severity
+    if min_pct_value < 10:
+        severity = 'severe'
+    elif min_pct_value < 20:
+        severity = 'moderate'
+    else:
+        severity = 'balanced'
+    
+    is_imb = min_pct < threshold
+    
+    return is_imb, minority_class, min_pct_value, severity
 
 
 def detect_potential_targets(df, max_unique=20, max_unique_ratio=0.05):

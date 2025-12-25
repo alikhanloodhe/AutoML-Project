@@ -8,6 +8,9 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, LabelEncoder
 from sklearn.impute import SimpleImputer, KNNImputer
+from modules.text_processor import (
+    preprocess_text_column, vectorize_text_tfidf, vectorize_text_count
+)
 
 # Try to import SMOTE, but make it optional
 try:
@@ -34,11 +37,17 @@ class PreprocessingPipeline:
     
     def add_step(self, step_name, action, params, affected_columns):
         """Add a preprocessing step to the pipeline."""
+        # Convert affected_columns to string for consistent display
+        if isinstance(affected_columns, list):
+            affected_cols_str = ', '.join(map(str, affected_columns)) if affected_columns else 'None'
+        else:
+            affected_cols_str = str(affected_columns)
+        
         self.steps.append({
             'step': step_name,
             'action': action,
             'params': params,
-            'affected_columns': affected_columns
+            'affected_columns': affected_cols_str
         })
     
     def get_summary(self):
@@ -187,7 +196,7 @@ def encode_categorical(df, column_types, method='onehot', target_col=None):
         target_col: Target column to exclude from encoding
     
     Returns:
-        Tuple of (encoded DataFrame, encoder dict)
+        Tuple of (encoded DataFrame, encoder dict, dropped columns list)
     """
     df_encoded = df.copy()
     
@@ -198,9 +207,25 @@ def encode_categorical(df, column_types, method='onehot', target_col=None):
         cat_cols.remove(target_col)
     
     encoders = {}
+    dropped_cols = []
     
     if not cat_cols:
-        return df_encoded, encoders
+        return df_encoded, encoders, dropped_cols
+    
+    # Drop high-cardinality categorical columns (likely identifiers like names, IDs)
+    # These have >50 unique values or >80% unique ratio
+    for col in cat_cols[:]:  # Use slice to iterate over copy
+        n_unique = df_encoded[col].nunique()
+        unique_ratio = n_unique / len(df_encoded)
+        
+        if n_unique > 50 or unique_ratio > 0.8:
+            st.info(f"Dropping '{col}' (high cardinality: {n_unique} unique values, {unique_ratio*100:.1f}% unique). Likely an identifier.")
+            df_encoded = df_encoded.drop(columns=[col])
+            cat_cols.remove(col)
+            dropped_cols.append(col)
+    
+    if not cat_cols:
+        return df_encoded, encoders, dropped_cols
     
     if method == 'onehot':
         # Check if one-hot encoding would create too many columns
@@ -229,7 +254,7 @@ def encode_categorical(df, column_types, method='onehot', target_col=None):
             df_encoded[col] = df_encoded[col].map(target_mean)
             encoders[col] = target_mean.to_dict()
     
-    return df_encoded, encoders
+    return df_encoded, encoders, dropped_cols
 
 
 def split_data(df, target_col, test_size=0.2, stratify=True, random_state=42):
@@ -295,6 +320,145 @@ def encode_target(y_train, y_test):
     return y_train, y_test, None
 
 
+def preprocess_text_features(df, column_types, target_col=None, method='tfidf', 
+                             max_features=3000, remove_stopwords_flag=True):
+    """
+    Preprocess text columns by cleaning and vectorizing.
+    
+    Args:
+        df: DataFrame
+        column_types: Dict with column type information
+        target_col: Target column to exclude
+        method: 'tfidf' or 'count' for vectorization
+        max_features: Maximum number of features to extract
+        remove_stopwords_flag: Whether to remove stopwords
+    
+    Returns:
+        Tuple of (processed DataFrame, text vectorizers dict, processed column types)
+    """
+    text_cols = column_types.get('text', [])
+    
+    # Remove target from text cols if present
+    if target_col and target_col in text_cols:
+        text_cols = [col for col in text_cols if col != target_col]
+    
+    if not text_cols:
+        return df, {}, column_types
+    
+    df_processed = df.copy()
+    text_vectorizers = {}
+    
+    for col in text_cols:
+        st.info(f"Processing text column: {col}")
+        
+        # Clean and preprocess text
+        cleaned_text = preprocess_text_column(
+            df_processed[col],
+            remove_stopwords_flag=remove_stopwords_flag,
+            use_stemming=False,
+            use_lemmatization=False,
+            lowercase=True,
+            remove_punctuation=True,
+            remove_numbers=False
+        )
+        
+        # Store the cleaned text (will be vectorized during train/test split)
+        df_processed[f'{col}_cleaned'] = cleaned_text
+        
+        # Drop the original text column to prevent it from being treated as categorical
+        df_processed = df_processed.drop(columns=[col])
+        
+        # Mark original text column for removal later
+        text_vectorizers[col] = {
+            'method': method,
+            'max_features': max_features,
+            'cleaned_col': f'{col}_cleaned'
+        }
+    
+    # Update column types - remove text columns from original types
+    # and also ensure they're not in categorical
+    new_column_types = column_types.copy()
+    new_column_types['text'] = []
+    
+    # Remove text columns from categorical if they were added there
+    if 'categorical' in new_column_types:
+        new_column_types['categorical'] = [
+            col for col in new_column_types['categorical'] 
+            if col not in text_cols
+        ]
+    
+    return df_processed, text_vectorizers, new_column_types
+
+
+def vectorize_text_for_split(X_train, X_test, text_vectorizers):
+    """
+    Vectorize text columns after train/test split.
+    
+    Args:
+        X_train: Training features DataFrame
+        X_test: Test features DataFrame
+        text_vectorizers: Dict with text column info
+    
+    Returns:
+        Tuple of (X_train with text vectors, X_test with text vectors, fitted vectorizers)
+    """
+    if not text_vectorizers:
+        return X_train, X_test, {}
+    
+    X_train_copy = X_train.copy()
+    X_test_copy = X_test.copy()
+    fitted_vectorizers = {}
+    
+    for original_col, config in text_vectorizers.items():
+        cleaned_col = config['cleaned_col']
+        method = config['method']
+        max_features = config['max_features']
+        
+        if cleaned_col not in X_train_copy.columns:
+            continue
+        
+        # Vectorize
+        if method == 'tfidf':
+            train_vectors, test_vectors, vectorizer, feature_names = vectorize_text_tfidf(
+                X_train_copy[cleaned_col],
+                X_test_copy[cleaned_col],
+                max_features=max_features,
+                ngram_range=(1, 2),
+                min_df=2,
+                max_df=0.95
+            )
+        else:  # count
+            train_vectors, test_vectors, vectorizer, feature_names = vectorize_text_count(
+                X_train_copy[cleaned_col],
+                X_test_copy[cleaned_col],
+                max_features=max_features,
+                ngram_range=(1, 2),
+                min_df=2,
+                max_df=0.95
+            )
+        
+        # Add vector columns with prefix
+        for feat in feature_names:
+            safe_feat = f"{original_col}_{feat}".replace(' ', '_').replace('-', '_')
+            X_train_copy[safe_feat] = train_vectors[feat].values
+            X_test_copy[safe_feat] = test_vectors[feat].values
+        
+        # Remove cleaned text column
+        X_train_copy = X_train_copy.drop(columns=[cleaned_col])
+        X_test_copy = X_test_copy.drop(columns=[cleaned_col])
+        
+        # Also remove original text column if it exists
+        if original_col in X_train_copy.columns:
+            X_train_copy = X_train_copy.drop(columns=[original_col])
+            X_test_copy = X_test_copy.drop(columns=[original_col])
+        
+        fitted_vectorizers[original_col] = vectorizer
+        
+        st.success(f"Vectorized '{original_col}' into {len(feature_names)} features using {method.upper()}")
+    
+    return X_train_copy, X_test_copy, fitted_vectorizers
+
+
 def render_preprocessing_page():
     """Render the preprocessing page."""
     st.header("Data Preprocessing")
@@ -326,36 +490,80 @@ def render_preprocessing_page():
                 progress = st.progress(0)
                 status = st.empty()
                 
-                # Step 1: Impute missing values
-                status.text("Step 1/5: Imputing missing values...")
-                df_processed = impute_missing_values(df, column_types, 'median', 'mode')
-                pipeline.add_step("Missing Value Imputation", "Median (num) / Mode (cat)", {}, "All columns")
-                progress.progress(20)
+                # Step 0: Encode target variable first (label encode)
+                status.text("Step 0/7: Encoding target variable...")
+                df_processed = df.copy()
                 
-                # Step 2: Handle outliers
-                status.text("Step 2/5: Handling outliers...")
+                # Label encode target if it's categorical/text
+                if df_processed[target_col].dtype == 'object' or df_processed[target_col].dtype.name == 'category':
+                    target_le = LabelEncoder()
+                    df_processed[target_col] = target_le.fit_transform(df_processed[target_col].astype(str))
+                    st.session_state['target_encoder_early'] = target_le
+                    pipeline.add_step("Target Encoding", "Label Encoding", {}, target_col)
+                    st.success(f"Target variable '{target_col}' label encoded.")
+                progress.progress(5)
+                
+                # Step 1: Handle text columns if present
+                text_vectorizers = {}
+                if column_types.get('text', []):
+                    status.text("Step 1/7: Preprocessing text columns...")
+                    df_processed, text_vectorizers, column_types = preprocess_text_features(
+                        df_processed, column_types, target_col, method='tfidf', max_features=3000
+                    )
+                    if text_vectorizers:
+                        text_col_names = ', '.join(text_vectorizers.keys())
+                        pipeline.add_step("Text Preprocessing", "TF-IDF Vectorization", 
+                                        {"max_features": 3000}, text_col_names)
+                progress.progress(12)
+                
+                # Step 2: Impute missing values
+                status.text("Step 2/7: Imputing missing values...")
+                df_processed = impute_missing_values(df_processed, column_types, 'median', 'mode')
+                pipeline.add_step("Missing Value Imputation", "Median (num) / Mode (cat)", {}, "All columns")
+                progress.progress(28)
+                
+                # Step 3: Handle outliers
+                status.text("Step 3/7: Handling outliers...")
                 df_processed = handle_outliers(df_processed, column_types, 'cap', 5, 95)
                 pipeline.add_step("Outlier Handling", "Cap at 5th/95th percentile", {"lower": 5, "upper": 95}, column_types.get('numerical', []))
-                progress.progress(40)
+                progress.progress(44)
                 
-                # Step 3: Encode categorical
-                status.text("Step 3/5: Encoding categorical features...")
-                df_processed, encoders = encode_categorical(df_processed, column_types, 'onehot', target_col)
-                pipeline.add_step("Categorical Encoding", "One-Hot Encoding", {}, column_types.get('categorical', []))
+                # Step 4: Encode categorical (excluding target)
+                status.text("Step 4/7: Encoding categorical features...")
+                df_processed, encoders, dropped_cols = encode_categorical(df_processed, column_types, 'onehot', target_col)
+                cat_cols_encoded = [col for col in column_types.get('categorical', []) if col != target_col and col not in dropped_cols]
+                if dropped_cols:
+                    pipeline.add_step("Drop High Cardinality Columns", "Removed identifiers", {}, ', '.join(dropped_cols))
+                pipeline.add_step("Categorical Encoding", "One-Hot Encoding", {}, ', '.join(cat_cols_encoded) if cat_cols_encoded else 'None')
                 progress.progress(60)
                 
-                # Step 4: Scale features
-                status.text("Step 4/5: Scaling features...")
+                # Step 5: Scale features
+                status.text("Step 5/7: Scaling features...")
                 df_processed, scaler = scale_features(df_processed, detect_column_types(df_processed), 'standard', target_col)
                 pipeline.add_step("Feature Scaling", "StandardScaler", {}, "Numerical columns")
+                progress.progress(72)
+                
+                # Step 6: Split data
+                status.text("Step 6/7: Splitting data...")
+                X_train, X_test, y_train, y_test = split_data(df_processed, target_col, 0.2, True, 42)
                 progress.progress(80)
                 
-                # Step 5: Split data
-                status.text("Step 5/5: Splitting data...")
-                X_train, X_test, y_train, y_test = split_data(df_processed, target_col, 0.2, True, 42)
+                # Step 7: Vectorize text if present and remove text columns
+                if text_vectorizers:
+                    status.text("Step 7/7: Vectorizing text features...")
+                    X_train, X_test, fitted_vectorizers = vectorize_text_for_split(
+                        X_train, X_test, text_vectorizers
+                    )
+                    st.session_state['text_vectorizers'] = fitted_vectorizers
+                    
+                    # Remove any remaining text/object columns
+                    X_train = X_train.select_dtypes(exclude=['object'])
+                    X_test = X_test.select_dtypes(exclude=['object'])
+                progress.progress(90)
                 
-                # Encode target if needed
-                y_train, y_test, target_encoder = encode_target(y_train, y_test)
+                # Target is already encoded, no need to encode again
+                status.text("Finalizing...")
+                target_encoder = st.session_state.get('target_encoder_early', None)
                 
                 # Apply SMOTE if needed
                 if st.session_state.get('apply_smote', False):
@@ -393,8 +601,38 @@ def render_preprocessing_page():
     else:  # Expert mode
         st.markdown("### Expert Mode - Custom Preprocessing")
         
+        # Text preprocessing (if text columns exist)
+        text_method = 'tfidf'
+        text_max_features = 100
+        text_remove_stopwords = True
+        
+        if column_types.get('text', []):
+            with st.expander("0 Text Preprocessing", expanded=True):
+                st.info(f"Text columns detected: {', '.join(column_types['text'])}")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    text_method = st.selectbox(
+                        "Vectorization method:",
+                        ["tfidf", "count"],
+                        help="TF-IDF weighs words by importance, Count is raw frequency"
+                    )
+                with col2:
+                    text_max_features = st.number_input(
+                        "Max features:", 
+                        min_value=10, 
+                        max_value=3000, 
+                        value=500,
+                        help="Maximum number of text features to extract"
+                    )
+                with col3:
+                    text_remove_stopwords = st.checkbox(
+                        "Remove stopwords",
+                        value=True,
+                        help="Remove common words like 'the', 'is', 'and'"
+                    )
+        
         # Missing value imputation
-        with st.expander("1⃣ Missing Value Imputation", expanded=True):
+        with st.expander("1 Missing Value Imputation", expanded=True):
             col1, col2 = st.columns(2)
             with col1:
                 strategy_num = st.selectbox(
@@ -410,7 +648,7 @@ def render_preprocessing_page():
                 )
         
         # Outlier handling
-        with st.expander("2⃣ Outlier Handling", expanded=True):
+        with st.expander("2 Outlier Handling", expanded=True):
             outlier_method = st.selectbox(
                 "Outlier handling method:",
                 ["cap", "remove", "log", "none"],
@@ -435,7 +673,7 @@ def render_preprocessing_page():
             )
         
         # Feature scaling
-        with st.expander("4⃣ Feature Scaling", expanded=True):
+        with st.expander("4 Feature Scaling", expanded=True):
             scaling_method = st.selectbox(
                 "Scaling method:",
                 ["standard", "minmax", "robust", "none"],
@@ -443,7 +681,7 @@ def render_preprocessing_page():
             )
         
         # Train-test split
-        with st.expander("5⃣ Train-Test Split", expanded=True):
+        with st.expander("5 Train-Test Split", expanded=True):
             col1, col2, col3 = st.columns(3)
             with col1:
                 test_size = st.slider("Test size", 0.1, 0.4, 0.2, 0.05)
@@ -463,28 +701,54 @@ def render_preprocessing_page():
             with st.spinner("Preprocessing data..."):
                 progress = st.progress(0)
                 
+                # Step 0: Text preprocessing
+                text_vectorizers = {}
+                if column_types.get('text', []):
+                    df_processed, text_vectorizers, column_types = preprocess_text_features(
+                        df, column_types, target_col, method=text_method, 
+                        max_features=text_max_features,
+                        remove_stopwords_flag=text_remove_stopwords
+                    )
+                    pipeline.add_step("Text Preprocessing", f"{text_method.upper()} Vectorization", 
+                                    {"max_features": text_max_features}, column_types.get('text', []))
+                else:
+                    df_processed = df.copy()
+                progress.progress(15)
+                
                 # Step 1: Impute
-                df_processed = impute_missing_values(df, column_types, strategy_num, strategy_cat)
+                df_processed = impute_missing_values(df_processed, column_types, strategy_num, strategy_cat)
                 pipeline.add_step("Missing Value Imputation", f"{strategy_num} (num) / {strategy_cat} (cat)", {}, "All columns")
-                progress.progress(20)
+                progress.progress(30)
                 
                 # Step 2: Outliers
                 df_processed = handle_outliers(df_processed, column_types, outlier_method, lower_pct, upper_pct)
                 pipeline.add_step("Outlier Handling", outlier_method, {"lower": lower_pct, "upper": upper_pct}, column_types.get('numerical', []))
-                progress.progress(40)
+                progress.progress(45)
                 
                 # Step 3: Encode
-                df_processed, encoders = encode_categorical(df_processed, column_types, encoding_method, target_col)
-                pipeline.add_step("Categorical Encoding", encoding_method, {}, column_types.get('categorical', []))
+                df_processed, encoders, dropped_cols = encode_categorical(df_processed, column_types, encoding_method, target_col)
+                cat_cols_encoded = [col for col in column_types.get('categorical', []) if col != target_col and col not in dropped_cols]
+                if dropped_cols:
+                    pipeline.add_step("Drop High Cardinality Columns", "Removed identifiers", {}, ', '.join(dropped_cols))
+                pipeline.add_step("Categorical Encoding", encoding_method, {}, ', '.join(cat_cols_encoded) if cat_cols_encoded else 'None')
                 progress.progress(60)
                 
                 # Step 4: Scale
                 df_processed, scaler = scale_features(df_processed, detect_column_types(df_processed), scaling_method, target_col)
                 pipeline.add_step("Feature Scaling", scaling_method, {}, "Numerical columns")
-                progress.progress(80)
+                progress.progress(75)
                 
                 # Step 5: Split
                 X_train, X_test, y_train, y_test = split_data(df_processed, target_col, test_size, stratify, random_state)
+                progress.progress(85)
+                
+                # Step 5b: Vectorize text if present
+                if text_vectorizers:
+                    X_train, X_test, fitted_vectorizers = vectorize_text_for_split(
+                        X_train, X_test, text_vectorizers
+                    )
+                    st.session_state['text_vectorizers'] = fitted_vectorizers
+                progress.progress(90)
                 
                 # Encode target
                 y_train, y_test, target_encoder = encode_target(y_train, y_test)

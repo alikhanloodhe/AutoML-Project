@@ -100,14 +100,16 @@ def display_dataset_metadata(df):
     st.markdown("---")
     st.subheader("Column Types")
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.info(f"Numerical: {len(column_types['numerical'])}")
     with col2:
         st.info(f"Categorical: {len(column_types['categorical'])}")
     with col3:
-        st.info(f"Datetime: {len(column_types['datetime'])}")
+        st.info(f"Text: {len(column_types.get('text', []))}")
     with col4:
+        st.info(f"Datetime: {len(column_types['datetime'])}")
+    with col5:
         st.info(f"Boolean: {len(column_types['boolean'])}")
     
     # Column details table
@@ -212,6 +214,7 @@ def target_variable_selection(df):
     )
     
     if target_col:
+        # Store the selected target column name
         st.session_state['target_column'] = target_col
         
         # Display class distribution
@@ -239,17 +242,16 @@ def target_variable_selection(df):
             st.plotly_chart(fig, use_container_width=True)
         
         # Check for imbalance
-        imbalanced, minority_class, minority_pct = is_imbalanced(df[target_col])
+        imbalanced, minority_class, minority_pct, severity = is_imbalanced(df[target_col])
         
-        if imbalanced:
-            if minority_pct < 5:
-                st.error(f"**Severe Class Imbalance Detected!** Class '{minority_class}' represents only {minority_pct:.2f}% of the data.")
-            else:
-                st.warning(f"**Class Imbalance Detected!** Class '{minority_class}' represents only {minority_pct:.2f}% of the data.")
-            
-            st.info("Consider using SMOTE, class weights, or collecting more data for the minority class.")
+        if severity == 'severe':
+            st.error(f"**Severe Class Imbalance Detected!** Class '{minority_class}' represents only {minority_pct:.2f}% of the data.")
+            st.info("⚠️ Recommendation: Use SMOTE, class weights, or collect more data for the minority class.")
+        elif severity == 'moderate':
+            st.warning(f"**Moderate Class Imbalance Detected!** Class '{minority_class}' represents {minority_pct:.2f}% of the data.")
+            st.info("💡 Recommendation: Consider using SMOTE or class weights during training.")
         else:
-            st.success("Class distribution appears balanced.")
+            st.success(f"Class distribution appears balanced. Minority class '{minority_class}': {minority_pct:.2f}%")
         
         # Check for missing values in target
         target_missing = df[target_col].isnull().sum()
@@ -363,4 +365,5 @@ def render_upload_page():
             with col2:
                 if st.button("Continue to EDA", type="primary", use_container_width=True):
                     st.session_state['current_page'] = 'eda'
+                    st.session_state['scroll_to_top'] = True
                     st.rerun()
